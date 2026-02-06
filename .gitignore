@@ -1,0 +1,9 @@
+node_modules/
+out/
+*.vsix
+*.log
+.DS_Store
+.vscode/
+.venv/
+__pycache__/
+example-project/.venv/

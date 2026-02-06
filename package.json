@@ -1,0 +1,53 @@
+{
+    "name": "behave-runner",
+    "displayName": "Behave Runner",
+    "description": "Run Behave scenarios from CodeLens in .feature files.",
+    "version": "1.0.0",
+    "author": "Remo Yukoff <remo.yukoff@gmail.com>",
+    "publisher": "remoyukoff",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RemoYukoff/behave-runner"
+  },
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "categories": [
+        "Testing"
+    ],
+    "activationEvents": [
+        "onLanguage:cucumber"
+    ],
+    "main": "./out/extension.js",
+    "contributes": {
+        "languages": [
+            {
+                "id": "cucumber",
+                "aliases": [
+                    "Cucumber",
+                    "feature"
+                ],
+                "extensions": [
+                    ".feature"
+                ]
+            }
+        ],
+        "commands": [
+            {
+                "command": "behaveRunner.runScenario",
+                "title": "Run Behave Scenario"
+            }
+        ]
+    },
+    "scripts": {
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "vscode:prepublish": "npm run compile"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "@types/vscode": "^1.85.0",
+        "typescript": "^5.0.0"
+    },
+    "license": "MIT"
+}

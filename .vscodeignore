@@ -1,0 +1,4 @@
+example-project/**
+node_modules/**
+out/**/*.map
+src/**
