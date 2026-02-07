@@ -41,6 +41,13 @@ class BehaveCodeLensProvider implements vscode.CodeLensProvider {
             arguments: [args]
           })
         );
+        lenses.push(
+          new vscode.CodeLens(range, {
+            title: "$(bug) Debug feature",
+            command: "behaveRunner.debugScenario",
+            arguments: [args]
+          })
+        );
         continue;
       }
 
@@ -68,6 +75,13 @@ class BehaveCodeLensProvider implements vscode.CodeLensProvider {
         new vscode.CodeLens(range, {
           title: "$(play) Run scenario",
           command: "behaveRunner.runScenario",
+          arguments: [args]
+        })
+      );
+      lenses.push(
+        new vscode.CodeLens(range, {
+          title: "$(bug) Debug scenario",
+          command: "behaveRunner.debugScenario",
           arguments: [args]
         })
       );
@@ -139,7 +153,58 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   );
 
-  context.subscriptions.push(runScenarioCommand);
+  const debugScenarioCommand = vscode.commands.registerCommand(
+    "behaveRunner.debugScenario",
+    async (args: RunScenarioArgs) => {
+      if (!args?.filePath) {
+        vscode.window.showErrorMessage(
+          "Behave Runner: missing scenario information."
+        );
+        return;
+      }
+
+      const scenarioName = args.scenarioName ?? "";
+      if (!args.runAll && !scenarioName) {
+        vscode.window.showErrorMessage(
+          "Behave Runner: missing scenario name for debug."
+        );
+        return;
+      }
+
+      const debugArgs = args.runAll
+        ? [args.filePath]
+        : [args.filePath, "-n", scenarioName];
+
+      const workspaceFolder = vscode.workspace.getWorkspaceFolder(
+        vscode.Uri.file(args.filePath)
+      );
+      const justMyCode = getJustMyCodeSetting(args.filePath);
+      const debugConfig: vscode.DebugConfiguration = {
+        type: "python",
+        request: "launch",
+        name: args.runAll
+          ? "Behave: Feature"
+          : `Behave: Scenario ${scenarioName}`,
+        module: "behave",
+        args: debugArgs,
+        cwd: args.workspaceRoot,
+        console: "integratedTerminal",
+        justMyCode
+      };
+
+      const started = await vscode.debug.startDebugging(
+        workspaceFolder ?? undefined,
+        debugConfig
+      );
+      if (!started) {
+        vscode.window.showErrorMessage(
+          "Behave Runner: failed to start debugger."
+        );
+      }
+    }
+  );
+
+  context.subscriptions.push(runScenarioCommand, debugScenarioCommand);
 }
 
 export function deactivate(): void {
@@ -197,5 +262,14 @@ function resolveInterpreterPath(
   }
 
   return null;
+}
+
+function getJustMyCodeSetting(resourcePath: string): boolean {
+  const resourceUri = vscode.Uri.file(resourcePath);
+  const config = vscode.workspace.getConfiguration(
+    "behaveRunner",
+    resourceUri
+  );
+  return config.get<boolean>("debug.justMyCode", true);
 }
 

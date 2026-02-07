@@ -2,7 +2,7 @@
     "name": "behave-runner",
     "displayName": "Behave Runner",
     "description": "Run Behave scenarios from CodeLens in .feature files.",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
   "repository": {
@@ -16,7 +16,9 @@
         "Testing"
     ],
     "activationEvents": [
-        "onLanguage:cucumber"
+        "onLanguage:cucumber",
+        "onCommand:behaveRunner.runScenario",
+        "onCommand:behaveRunner.debugScenario"
     ],
     "main": "./out/extension.js",
     "contributes": {
@@ -36,8 +38,22 @@
             {
                 "command": "behaveRunner.runScenario",
                 "title": "Run Behave Scenario"
+            },
+            {
+                "command": "behaveRunner.debugScenario",
+                "title": "Debug Behave Scenario"
             }
-        ]
+        ],
+        "configuration": {
+            "title": "Behave Runner",
+            "properties": {
+                "behaveRunner.debug.justMyCode": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Only debug user code when running Behave in debug mode."
+                }
+            }
+        }
     },
     "scripts": {
         "compile": "tsc -p ./",
