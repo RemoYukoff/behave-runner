@@ -2,13 +2,13 @@
     "name": "behave-runner",
     "displayName": "Behave Runner",
     "description": "Run Behave scenarios from CodeLens in .feature files.",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/RemoYukoff/behave-runner"
-  },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/RemoYukoff/behave-runner"
+    },
     "engines": {
         "vscode": "^1.85.0"
     },
@@ -16,22 +16,28 @@
         "Testing"
     ],
     "activationEvents": [
-        "onLanguage:cucumber",
-        "onCommand:behaveRunner.runScenario",
-        "onCommand:behaveRunner.debugScenario"
+        "workspaceContains:**/*.feature"
     ],
     "main": "./out/extension.js",
     "contributes": {
         "languages": [
             {
-                "id": "cucumber",
+                "id": "behave",
                 "aliases": [
-                    "Cucumber",
+                    "Behave",
                     "feature"
                 ],
                 "extensions": [
                     ".feature"
-                ]
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "behave",
+                "scopeName": "source.behave",
+                "path": "./syntaxes/behave.tmLanguage.json"
             }
         ],
         "commands": [

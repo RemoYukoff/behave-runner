@@ -1,0 +1,118 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Behave Feature",
+    "scopeName": "source.behave",
+    "patterns": [
+        {
+            "name": "comment.line.number-sign.python",
+            "match": "^\\s*#.*$"
+        },
+        {
+            "name": "comment.line.number-sign.python",
+            "match": "^\\s*#\\s*language\\s*:\\s*[a-zA-Z\\-_]+\\s*$"
+        },
+        {
+            "name": "entity.name.type.tag.python",
+            "match": "^\\s*@\\S+"
+        },
+        {
+            "name": "meta.class.python",
+            "begin": "^\\s*(Feature:)\\s*(.*)$",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.python"
+                },
+                "2": {
+                    "name": "entity.name.type.class.python"
+                }
+            },
+            "end": "$"
+        },
+        {
+            "name": "meta.class.python",
+            "begin": "^\\s*(Background:)\\s*(.*)$",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.python"
+                },
+                "2": {
+                    "name": "entity.name.type.class.python"
+                }
+            },
+            "end": "$"
+        },
+        {
+            "name": "meta.class.python",
+            "begin": "^\\s*(Rule:)\\s*(.*)$",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.python"
+                },
+                "2": {
+                    "name": "entity.name.type.class.python"
+                }
+            },
+            "end": "$"
+        },
+        {
+            "name": "meta.class.python",
+            "begin": "^\\s*(Scenario(?: Outline| Template)?):\\s*(.*)$",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.python"
+                },
+                "2": {
+                    "name": "entity.name.type.class.python"
+                }
+            },
+            "end": "$"
+        },
+        {
+            "name": "meta.class.python",
+            "begin": "^\\s*((?:Examples?|Scenarios):)\\s*(.*)$",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.control.python"
+                },
+                "2": {
+                    "name": "entity.name.type.class.python"
+                }
+            },
+            "end": "$"
+        },
+        {
+            "name": "entity.name.function.python",
+            "match": "^\\s*(Given|When|Then|And|But|\\*)"
+        },
+        {
+            "name": "string.quoted.docstring.multi.python",
+            "begin": "(\"\"\"|```)",
+            "beginCaptures": {
+                "1": {
+                    "name": "string.quoted.docstring.multi.python"
+                }
+            },
+            "end": "\\1",
+            "endCaptures": {
+                "1": {
+                    "name": "string.quoted.docstring.multi.python"
+                }
+            },
+            "patterns": [
+                {
+                    "name": "string.quoted.docstring.multi.python",
+                    "match": "[\\s\\S]+?"
+                }
+            ]
+        },
+        {
+            "name": "string.other.python",
+            "match": "^\\s*\\|.*\\|\\s*$"
+        },
+        {
+            "name": "constant.character.format.placeholder.other.python",
+            "match": "<[^>]+>"
+        }
+    ],
+    "repository": {}
+}

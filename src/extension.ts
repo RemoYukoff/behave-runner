@@ -107,7 +107,7 @@ class BehaveCodeLensProvider implements vscode.CodeLensProvider {
 export function activate(context: vscode.ExtensionContext): void {
   const codeLensProvider = new BehaveCodeLensProvider();
   const languageSelector: vscode.DocumentSelector = [
-    { language: "cucumber", scheme: "file" },
+    { language: "behave", scheme: "file" },
     { pattern: "**/*.feature" }
   ];
 
