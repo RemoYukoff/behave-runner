@@ -3,6 +3,9 @@ import * as fs from "fs";
 import * as vscode from "vscode";
 import { BehaveDefinitionProvider } from "./stepDefinitionProvider";
 import { getStepScanner, disposeStepScanner } from "./stepScanner";
+import { BehaveReferenceProvider } from "./stepReferenceProvider";
+import { BehaveStepUsageProvider } from "./stepUsageProvider";
+import { getFeatureScanner, disposeFeatureScanner } from "./featureScanner";
 
 type RunScenarioArgs = {
   filePath: string;
@@ -124,12 +127,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const stepScanner = getStepScanner();
   await stepScanner.initialize();
 
+  // Initialize the feature scanner for Find References
+  const featureScanner = getFeatureScanner();
+  await featureScanner.initialize();
+
   // Register the Definition Provider for Go to Definition (Ctrl+Click)
   const definitionProvider = new BehaveDefinitionProvider();
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(
       languageSelector,
       definitionProvider
+    )
+  );
+
+  // Register the Reference Provider for Find References (from Python step decorators)
+  const referenceProvider = new BehaveReferenceProvider();
+  context.subscriptions.push(
+    vscode.languages.registerReferenceProvider(
+      { language: "python", scheme: "file" },
+      referenceProvider
+    )
+  );
+
+  // Register the Definition Provider for Ctrl+Click on step functions (shows usages in .feature files)
+  const stepUsageProvider = new BehaveStepUsageProvider();
+  context.subscriptions.push(
+    vscode.languages.registerDefinitionProvider(
+      { language: "python", scheme: "file" },
+      stepUsageProvider
     )
   );
 
@@ -231,6 +256,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export function deactivate(): void {
   disposeStepScanner();
+  disposeFeatureScanner();
 }
 
 function getPythonInterpreterPath(

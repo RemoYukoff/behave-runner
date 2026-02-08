@@ -32,3 +32,21 @@ export interface StepInfo {
   /** The effective keyword after resolving And/But */
   effectiveKeyword: StepKeyword | null;
 }
+
+/**
+ * Represents a step found in a .feature file with its location
+ */
+export interface FeatureStep {
+  /** The step text without the keyword (e.g., 'the message is "Hello"') */
+  text: string;
+  /** The keyword used in the feature file (Given, When, Then, And, But) */
+  keyword: string;
+  /** The effective keyword after resolving And/But */
+  effectiveKeyword: StepKeyword | null;
+  /** Absolute path to the .feature file */
+  filePath: string;
+  /** Line number where the step appears (0-based) */
+  line: number;
+  /** Character position where the step text starts (0-based) */
+  character: number;
+}

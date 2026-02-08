@@ -14,7 +14,11 @@ Run or debug Behave scenarios directly from your `.feature` files using CodeLens
 
 ### Go to Step Definition
 
-**Ctrl+Click** (Cmd+Click on Mac) on any step to navigate to its Python definition.
+**Ctrl+Click** (Cmd+Click on Mac) on any step in a `.feature` file to navigate to its Python definition.
+
+### Find Step Usages
+
+**Ctrl+Click** (Cmd+Click on Mac) on a step function in Python to see all `.feature` files where that step is used. This works on any function decorated with `@given`, `@when`, `@then`, or `@step`.
 
 ### Syntax Highlighting
 
