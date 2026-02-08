@@ -88,16 +88,28 @@ export class FeatureScanner {
   }
 
   /**
+   * Get feature file patterns from configuration.
+   */
+  private getPatterns(): string[] {
+    const config = vscode.workspace.getConfiguration("behaveRunner");
+    return config.get<string[]>("featureFiles.patterns", ["**/*.feature"]);
+  }
+
+  /**
    * Scan all .feature files in the workspace.
    */
   private async scanAllFiles(): Promise<void> {
-    const files = await vscode.workspace.findFiles(
-      "**/*.feature",
-      "**/node_modules/**"
-    );
+    const patterns = this.getPatterns();
 
-    for (const file of files) {
-      await this.scanFile(file.fsPath);
+    for (const pattern of patterns) {
+      const files = await vscode.workspace.findFiles(
+        pattern,
+        "**/node_modules/**"
+      );
+
+      for (const file of files) {
+        await this.scanFile(file.fsPath);
+      }
     }
   }
 

@@ -90,15 +90,23 @@ export class StepScanner {
   }
 
   /**
-   * Scan all Python files in the workspace that might contain step definitions.
+   * Get step definition patterns from configuration.
    */
-  private async scanAllFiles(): Promise<void> {
-    const patterns = [
+  private getPatterns(): string[] {
+    const config = vscode.workspace.getConfiguration("behaveRunner");
+    return config.get<string[]>("stepDefinitions.patterns", [
       "**/steps/**/*.py",
       "**/*_steps.py",
       "**/step_*.py",
       "**/steps.py",
-    ];
+    ]);
+  }
+
+  /**
+   * Scan all Python files in the workspace that might contain step definitions.
+   */
+  private async scanAllFiles(): Promise<void> {
+    const patterns = this.getPatterns();
 
     for (const pattern of patterns) {
       const files = await vscode.workspace.findFiles(
@@ -231,17 +239,47 @@ export class StepScanner {
   }
 
   /**
-   * Check if a file path looks like a step definition file.
+   * Check if a file path matches the configured step definition patterns.
    */
   private isStepFile(filePath: string): boolean {
-    const lowerPath = filePath.toLowerCase();
-    return (
-      lowerPath.includes("/steps/") ||
-      lowerPath.includes("\\steps\\") ||
-      lowerPath.endsWith("_steps.py") ||
-      lowerPath.endsWith("steps.py") ||
-      lowerPath.includes("step_")
-    );
+    // If file was already scanned, it's a step file
+    if (this.definitions.has(filePath)) {
+      return true;
+    }
+
+    // Check against configured patterns using simple string matching
+    const patterns = this.getPatterns();
+    const lowerPath = filePath.toLowerCase().replace(/\\/g, "/");
+
+    for (const pattern of patterns) {
+      // Convert glob pattern to simple checks
+      const lowerPattern = pattern.toLowerCase();
+
+      if (lowerPattern.includes("**/steps/**")) {
+        if (lowerPath.includes("/steps/")) {
+          return true;
+        }
+      } else if (lowerPattern.endsWith("_steps.py")) {
+        if (lowerPath.endsWith("_steps.py")) {
+          return true;
+        }
+      } else if (lowerPattern.includes("step_")) {
+        if (lowerPath.includes("step_") && lowerPath.endsWith(".py")) {
+          return true;
+        }
+      } else if (lowerPattern.endsWith("steps.py")) {
+        if (lowerPath.endsWith("steps.py")) {
+          return true;
+        }
+      } else if (lowerPattern.endsWith(".py")) {
+        // Generic pattern - check if it's a Python file
+        if (lowerPath.endsWith(".py")) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 }
 

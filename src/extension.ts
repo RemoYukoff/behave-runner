@@ -7,6 +7,7 @@ import { BehaveReferenceProvider } from "./stepReferenceProvider";
 import { BehaveStepUsageProvider } from "./stepUsageProvider";
 import { getFeatureScanner, disposeFeatureScanner } from "./featureScanner";
 import { StepCompletionProvider } from "./stepCompletionProvider";
+import { StepDiagnosticsProvider } from "./stepDiagnosticsProvider";
 
 type RunScenarioArgs = {
   filePath: string;
@@ -168,6 +169,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       " " // trigger after space
     )
   );
+
+  // Register the Diagnostics Provider for undefined steps
+  const diagnosticsProvider = new StepDiagnosticsProvider();
+  context.subscriptions.push(diagnosticsProvider);
+
+  // Refresh diagnostics when Python step files change
+  const pythonWatcher = vscode.workspace.createFileSystemWatcher("**/*.py");
+  pythonWatcher.onDidChange(() => diagnosticsProvider.refreshAll());
+  pythonWatcher.onDidCreate(() => diagnosticsProvider.refreshAll());
+  pythonWatcher.onDidDelete(() => diagnosticsProvider.refreshAll());
+  context.subscriptions.push(pythonWatcher);
 
   // Clear definition cache when documents close to prevent memory leaks
   context.subscriptions.push(

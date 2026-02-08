@@ -2,7 +2,7 @@
     "name": "behave-runner",
     "displayName": "Behave Runner",
     "description": "Run, debug, and navigate Behave scenarios with CodeLens, Go to Definition, step autocomplete, and more.",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
     "repository": {
@@ -67,6 +67,29 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Only debug user code when running Behave in debug mode."
+                },
+                "behaveRunner.stepDefinitions.patterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "**/steps/**/*.py",
+                        "**/*_steps.py",
+                        "**/step_*.py",
+                        "**/steps.py"
+                    ],
+                    "description": "Glob patterns for Python files containing step definitions."
+                },
+                "behaveRunner.featureFiles.patterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "**/*.feature"
+                    ],
+                    "description": "Glob patterns for Gherkin feature files."
                 }
             }
         }
