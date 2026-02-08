@@ -82,7 +82,7 @@
         },
         {
             "name": "entity.name.function.python",
-            "match": "^\\s*(Given|When|Then|And|But|\\*)"
+            "match": "^\\s*(Given|When|Then|And|But)"
         },
         {
             "name": "string.quoted.docstring.multi.python",

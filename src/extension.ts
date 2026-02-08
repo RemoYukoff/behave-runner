@@ -1,6 +1,8 @@
 import * as path from "path";
 import * as fs from "fs";
 import * as vscode from "vscode";
+import { BehaveDefinitionProvider } from "./stepDefinitionProvider";
+import { getStepScanner, disposeStepScanner } from "./stepScanner";
 
 type RunScenarioArgs = {
   filePath: string;
@@ -104,7 +106,7 @@ class BehaveCodeLensProvider implements vscode.CodeLensProvider {
   }
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const codeLensProvider = new BehaveCodeLensProvider();
   const languageSelector: vscode.DocumentSelector = [
     { language: "behave", scheme: "file" },
@@ -116,6 +118,26 @@ export function activate(context: vscode.ExtensionContext): void {
       languageSelector,
       codeLensProvider
     )
+  );
+
+  // Initialize the step scanner for Go to Definition
+  const stepScanner = getStepScanner();
+  await stepScanner.initialize();
+
+  // Register the Definition Provider for Go to Definition (Ctrl+Click)
+  const definitionProvider = new BehaveDefinitionProvider();
+  context.subscriptions.push(
+    vscode.languages.registerDefinitionProvider(
+      languageSelector,
+      definitionProvider
+    )
+  );
+
+  // Clear definition cache when documents close to prevent memory leaks
+  context.subscriptions.push(
+    vscode.workspace.onDidCloseTextDocument(() => {
+      definitionProvider.clearCache();
+    })
   );
 
   const runScenarioCommand = vscode.commands.registerCommand(
@@ -208,7 +230,7 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  return;
+  disposeStepScanner();
 }
 
 function getPythonInterpreterPath(
@@ -272,4 +294,3 @@ function getJustMyCodeSetting(resourcePath: string): boolean {
   );
   return config.get<boolean>("debug.justMyCode", true);
 }
-
