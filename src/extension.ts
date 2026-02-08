@@ -6,6 +6,7 @@ import { getStepScanner, disposeStepScanner } from "./stepScanner";
 import { BehaveReferenceProvider } from "./stepReferenceProvider";
 import { BehaveStepUsageProvider } from "./stepUsageProvider";
 import { getFeatureScanner, disposeFeatureScanner } from "./featureScanner";
+import { StepCompletionProvider } from "./stepCompletionProvider";
 
 type RunScenarioArgs = {
   filePath: string;
@@ -155,6 +156,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.languages.registerDefinitionProvider(
       { language: "python", scheme: "file" },
       stepUsageProvider
+    )
+  );
+
+  // Register the Completion Provider for step autocomplete in .feature files
+  const completionProvider = new StepCompletionProvider();
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider(
+      languageSelector,
+      completionProvider,
+      " " // trigger after space
     )
   );
 

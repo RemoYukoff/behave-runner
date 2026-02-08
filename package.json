@@ -1,8 +1,8 @@
 {
     "name": "behave-runner",
     "displayName": "Behave Runner",
-    "description": "Run Behave scenarios from CodeLens in .feature files.",
-    "version": "1.4.0",
+    "description": "Run, debug, and navigate Behave scenarios with CodeLens, Go to Definition, step autocomplete, and more.",
+    "version": "1.5.0",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
     "repository": {
@@ -13,7 +13,17 @@
         "vscode": "^1.85.0"
     },
     "categories": [
-        "Testing"
+        "Testing",
+        "Programming Languages"
+    ],
+    "keywords": [
+        "behave",
+        "bdd",
+        "gherkin",
+        "cucumber",
+        "feature",
+        "python",
+        "test"
     ],
     "activationEvents": [
         "workspaceContains:**/*.feature"
