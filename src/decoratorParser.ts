@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
-import { DECORATOR_PATTERNS, FUNCTION_DEF_REGEX, EMPTY_OR_COMMENT_REGEX } from "./constants";
+import {
+  DECORATOR_PATTERNS,
+  FUNCTION_DEF_REGEX,
+  EMPTY_OR_COMMENT_REGEX,
+  PYTHON_DECORATOR_REGEX,
+} from "./constants";
 
 /**
  * Represents a parsed step decorator.
@@ -73,7 +78,7 @@ export function findDecoratorsAbove(
 
     // If we hit any other line (another decorator, code, etc.), stop searching
     // But allow other decorators (non-step) to be skipped
-    if (lineText.match(/^\s*@\w+/)) {
+    if (PYTHON_DECORATOR_REGEX.test(lineText)) {
       // It's a decorator but not a step decorator, continue looking
       continue;
     }

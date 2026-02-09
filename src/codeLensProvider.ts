@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { RunScenarioArgs } from "./types";
+import { FEATURE_LINE_REGEX, SCENARIO_LINE_REGEX } from "./constants";
 
 /**
  * Provides CodeLens for running and debugging Behave features and scenarios.
@@ -19,7 +20,7 @@ export class BehaveCodeLensProvider implements vscode.CodeLensProvider {
 
     for (let i = 0; i < document.lineCount; i += 1) {
       const line = document.lineAt(i);
-      const featureMatch = line.text.match(/^\s*Feature:\s*(.+)$/);
+      const featureMatch = line.text.match(FEATURE_LINE_REGEX);
       if (featureMatch) {
         const range = new vscode.Range(i, 0, i, line.text.length);
         const args: RunScenarioArgs = {
@@ -44,9 +45,7 @@ export class BehaveCodeLensProvider implements vscode.CodeLensProvider {
         continue;
       }
 
-      const scenarioMatch = line.text.match(
-        /^\s*Scenario(?: Outline)?:\s*(.+)$/
-      );
+      const scenarioMatch = line.text.match(SCENARIO_LINE_REGEX);
       if (!scenarioMatch) {
         continue;
       }

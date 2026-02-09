@@ -99,3 +99,20 @@ export const EMPTY_OR_COMMENT_REGEX = /^\s*(#.*)?$/;
  */
 export const STRUCTURAL_KEYWORD_REGEX =
   /^\s*(Feature|Scenario|Scenario Outline|Background|Examples):/i;
+
+/**
+ * Regex to match Feature line and capture feature name.
+ * Groups: 1=feature name
+ */
+export const FEATURE_LINE_REGEX = /^\s*Feature:\s*(.+)$/;
+
+/**
+ * Regex to match Scenario or Scenario Outline line and capture scenario name.
+ * Groups: 1=scenario name
+ */
+export const SCENARIO_LINE_REGEX = /^\s*Scenario(?: Outline)?:\s*(.+)$/;
+
+/**
+ * Regex to match any Python decorator.
+ */
+export const PYTHON_DECORATOR_REGEX = /^\s*@\w+/;
