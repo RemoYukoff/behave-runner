@@ -211,3 +211,94 @@ Feature: Go to Definition Test Cases
   Scenario: Multiple definitions with single quotes
     Given the value is 'test456'
     Then the value equals 'test456'
+
+  # =========================================================================
+  # Star (*) keyword - acts like And/But, inherits parent keyword
+  # =========================================================================
+
+  Scenario: Star keyword inherits Given
+    Given the first number is 5
+    * the price is 100.00
+    When I add 3
+    Then the result is 8
+
+  Scenario: Star keyword inherits When
+    Given the first number is 10
+    When I add 5
+    * I wait for 1 seconds
+    Then the result is 15
+
+  Scenario: Star keyword inherits Then
+    Given the first number is 10
+    When I add 5
+    Then the result is 15
+    * the system is ready
+
+  # =========================================================================
+  # Doc Strings (triple quoted text blocks)
+  # =========================================================================
+
+  Scenario: Scenario with description using triple quotes
+    """
+    Given This is a scenario description using triple quotes.
+    It can span multiple lines and is used to provide
+    additional context about what the scenario tests.
+    """
+    Given the first number is 1
+    When I add 2
+    Then the result is 3
+
+  Scenario: Step with doc string using triple double quotes
+    Given a sample text loaded into the system
+      """
+      This is a multi-line text block.
+      It can contain "quotes" and special characters.
+      Used for passing large text to steps.
+      """
+    Then the system processes the text
+
+  Scenario: Step with doc string using triple backticks
+    Given a sample text loaded into the system
+      ```
+      def hello():
+          print("Hello, World!")
+      
+      hello()
+      ```
+    Then the system processes the text
+
+  Scenario: Step with doc string containing code
+    Given a sample text loaded into the system
+      """json
+      {
+        "name": "test",
+        "value": 123,
+        "nested": {
+          "key": "value"
+        }
+      }
+      """
+    Then the system processes the text
+
+  Scenario: Doc string with step keywords should not trigger warnings
+    # This test verifies that step keywords inside doc strings are ignored
+    # and do not produce "undefined step" diagnostics
+    Given a sample text loaded into the system
+      """
+      Given this looks like a step but it's just text
+      When the parser sees this it should ignore it
+      Then no warning should appear for these lines
+      And neither for this one
+      But this is also fine
+      * even the star keyword should be ignored
+      """
+    Then the system processes the text
+
+  Scenario: Backtick doc string with step keywords
+    Given a sample text loaded into the system
+      ```
+      Given inside backticks
+      When this should also be ignored
+      Then no false positives here
+      ```
+    Then the system processes the text

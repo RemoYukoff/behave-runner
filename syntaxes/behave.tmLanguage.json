@@ -16,6 +16,22 @@
             "match": "^\\s*@\\S+"
         },
         {
+            "name": "string.quoted.docstring.multi.python",
+            "begin": "^\\s*(\"\"\"|```)",
+            "beginCaptures": {
+                "1": {
+                    "name": "string.quoted.docstring.multi.python"
+                }
+            },
+            "end": "^\\s*(\\1)",
+            "endCaptures": {
+                "1": {
+                    "name": "string.quoted.docstring.multi.python"
+                }
+            },
+            "contentName": "string.quoted.docstring.multi.python"
+        },
+        {
             "name": "meta.class.python",
             "begin": "^\\s*(Feature:)\\s*(.*)$",
             "beginCaptures": {
@@ -82,28 +98,7 @@
         },
         {
             "name": "entity.name.function.python",
-            "match": "^\\s*(Given|When|Then|And|But)"
-        },
-        {
-            "name": "string.quoted.docstring.multi.python",
-            "begin": "(\"\"\"|```)",
-            "beginCaptures": {
-                "1": {
-                    "name": "string.quoted.docstring.multi.python"
-                }
-            },
-            "end": "\\1",
-            "endCaptures": {
-                "1": {
-                    "name": "string.quoted.docstring.multi.python"
-                }
-            },
-            "patterns": [
-                {
-                    "name": "string.quoted.docstring.multi.python",
-                    "match": "[\\s\\S]+?"
-                }
-            ]
+            "match": "^\\s*(Given|When|Then|And|But|\\*)"
         },
         {
             "name": "string.other.python",

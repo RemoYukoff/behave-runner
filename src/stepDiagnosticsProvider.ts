@@ -65,10 +65,35 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
     const allDefinitions = scanner.getAllDefinitions();
 
     let previousKeyword: StepKeyword | null = null;
+    let insideDocString = false;
+    let docStringDelimiter: string | null = null;
 
     for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex++) {
       const line = document.lineAt(lineIndex);
       const lineText = line.text;
+      const trimmedLine = lineText.trim();
+
+      // Handle doc string blocks (""" or ```)
+      if (!insideDocString) {
+        if (trimmedLine.startsWith('"""') || trimmedLine.startsWith("```")) {
+          docStringDelimiter = trimmedLine.substring(0, 3);
+          // Check if it also ends on the same line
+          if (trimmedLine.length > 3 && trimmedLine.endsWith(docStringDelimiter)) {
+            // Single line doc string, skip this line
+            continue;
+          }
+          insideDocString = true;
+          continue;
+        }
+      } else {
+        // Inside doc string - check if this line ends it
+        if (docStringDelimiter && trimmedLine.endsWith(docStringDelimiter)) {
+          insideDocString = false;
+          docStringDelimiter = null;
+        }
+        // Skip all lines inside doc strings
+        continue;
+      }
 
       // Parse the step line
       const stepInfo = parseStepLine(lineText, previousKeyword);
@@ -94,7 +119,7 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
 
       if (matches.length === 0) {
         // No matching definition found - create a diagnostic
-        const stepMatch = lineText.match(/^\s*(Given|When|Then|And|But)\s+/i);
+        const stepMatch = lineText.match(/^\s*(Given|When|Then|And|But|\*)\s+/i);
         const startChar = stepMatch ? stepMatch[0].length : 0;
 
         const range = new vscode.Range(

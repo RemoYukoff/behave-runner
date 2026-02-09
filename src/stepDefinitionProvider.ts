@@ -107,6 +107,12 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
 
     // Parse the step from the current line
     const lines = document.getText().split("\n");
+
+    // Check if we're inside a doc string block - if so, ignore
+    if (this.isInsideDocString(lines, position.line)) {
+      return { locationLinks: null, originRange: null };
+    }
+
     const effectiveKeyword = resolveEffectiveKeyword(lines, position.line);
 
     const stepInfo = parseStepLine(lineText, effectiveKeyword);
@@ -179,9 +185,12 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
   ): vscode.Range | null {
     const lineText = line.text;
 
+    // Escape special regex characters in keyword (e.g., * becomes \*)
+    const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
     // Find the keyword position
     const keywordMatch = lineText.match(
-      new RegExp(`^(\\s*)(${keyword})\\s+`, "i")
+      new RegExp(`^(\\s*)(${escapedKeyword})\\s+`, "i")
     );
 
     if (!keywordMatch) {
@@ -205,6 +214,39 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
       new vscode.Position(line.lineNumber, startChar),
       new vscode.Position(line.lineNumber, endChar)
     );
+  }
+
+  /**
+   * Check if a line is inside a doc string block (""" or ```).
+   */
+  private isInsideDocString(lines: string[], targetLine: number): boolean {
+    let insideDocString = false;
+    let docStringDelimiter: string | null = null;
+
+    for (let i = 0; i < targetLine; i++) {
+      const line = lines[i].trim();
+
+      if (!insideDocString) {
+        // Check if this line starts a doc string
+        if (line.startsWith('"""') || line.startsWith("```")) {
+          docStringDelimiter = line.substring(0, 3);
+          // Check if it also ends on the same line
+          if (line.length > 3 && line.endsWith(docStringDelimiter)) {
+            // Single line doc string, still outside
+            continue;
+          }
+          insideDocString = true;
+        }
+      } else {
+        // Check if this line ends the doc string
+        if (docStringDelimiter && line.endsWith(docStringDelimiter)) {
+          insideDocString = false;
+          docStringDelimiter = null;
+        }
+      }
+    }
+
+    return insideDocString;
   }
 
   /**

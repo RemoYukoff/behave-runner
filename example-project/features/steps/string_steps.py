@@ -63,3 +63,17 @@ def step_given_value(context, value):
 @then("the value equals '{expected}'")
 def step_then_value_equals(context, expected):
     assert context.value == expected
+
+
+# =============================================================================
+# Steps with doc strings (triple quoted text blocks)
+# =============================================================================
+
+@given("a sample text loaded into the system")
+def step_given_sample_text(context):
+    context.text_content = context.text
+
+
+@then("the system processes the text")
+def step_then_process_text(context):
+    assert context.text_content is not None

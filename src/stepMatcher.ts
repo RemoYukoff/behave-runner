@@ -122,7 +122,7 @@ export function parseStepLine(
   line: string,
   previousKeyword: StepKeyword | null
 ): { keyword: string; text: string; effectiveKeyword: StepKeyword | null } | null {
-  const stepMatch = line.match(/^\s*(Given|When|Then|And|But)\s+(.+)$/i);
+  const stepMatch = line.match(/^\s*(Given|When|Then|And|But|\*)\s+(.+)$/i);
 
   if (!stepMatch) {
     return null;
@@ -145,6 +145,7 @@ export function parseStepLine(
       break;
     case "and":
     case "but":
+    case "*":
       // Inherit from previous step
       effectiveKeyword = previousKeyword;
       break;
@@ -172,9 +173,9 @@ export function resolveEffectiveKeyword(
     return directMatch[1].toLowerCase() as StepKeyword;
   }
 
-  // If current line is And/But, search backwards for parent keyword
-  const isAndBut = currentLine.match(/^\s*(And|But)\s+/i);
-  if (!isAndBut) {
+  // If current line is And/But/*, search backwards for parent keyword
+  const isAndButStar = currentLine.match(/^\s*(And|But|\*)\s+/i);
+  if (!isAndButStar) {
     // Not a step line
     return null;
   }
@@ -189,8 +190,8 @@ export function resolveEffectiveKeyword(
       return parentMatch[1].toLowerCase() as StepKeyword;
     }
 
-    // Skip And/But lines, continue searching
-    const andButMatch = line.match(/^\s*(And|But)\s+/i);
+    // Skip And/But/* lines, continue searching
+    const andButMatch = line.match(/^\s*(And|But|\*)\s+/i);
     if (andButMatch) {
       continue;
     }
