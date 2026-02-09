@@ -6,6 +6,7 @@ import {
   resolveEffectiveKeyword,
 } from "./stepMatcher";
 import { StepKeyword } from "./types";
+import { isInsideDocString } from "./utils";
 
 /**
  * Cache entry for a line's definition lookup result.
@@ -109,7 +110,7 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
     const lines = document.getText().split("\n");
 
     // Check if we're inside a doc string block - if so, ignore
-    if (this.isInsideDocString(lines, position.line)) {
+    if (isInsideDocString(lines, position.line)) {
       return { locationLinks: null, originRange: null };
     }
 
@@ -214,39 +215,6 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
       new vscode.Position(line.lineNumber, startChar),
       new vscode.Position(line.lineNumber, endChar)
     );
-  }
-
-  /**
-   * Check if a line is inside a doc string block (""" or ```).
-   */
-  private isInsideDocString(lines: string[], targetLine: number): boolean {
-    let insideDocString = false;
-    let docStringDelimiter: string | null = null;
-
-    for (let i = 0; i < targetLine; i++) {
-      const line = lines[i].trim();
-
-      if (!insideDocString) {
-        // Check if this line starts a doc string
-        if (line.startsWith('"""') || line.startsWith("```")) {
-          docStringDelimiter = line.substring(0, 3);
-          // Check if it also ends on the same line
-          if (line.length > 3 && line.endsWith(docStringDelimiter)) {
-            // Single line doc string, still outside
-            continue;
-          }
-          insideDocString = true;
-        }
-      } else {
-        // Check if this line ends the doc string
-        if (docStringDelimiter && line.endsWith(docStringDelimiter)) {
-          insideDocString = false;
-          docStringDelimiter = null;
-        }
-      }
-    }
-
-    return insideDocString;
   }
 
   /**

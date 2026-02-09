@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { getStepScanner } from "./stepScanner";
 import { findMatchingDefinitions, parseStepLine } from "./stepMatcher";
 import { StepKeyword } from "./types";
+import { DocStringTracker } from "./utils";
 
 /**
  * Provides diagnostics for undefined steps in .feature files.
@@ -65,33 +66,14 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
     const allDefinitions = scanner.getAllDefinitions();
 
     let previousKeyword: StepKeyword | null = null;
-    let insideDocString = false;
-    let docStringDelimiter: string | null = null;
+    const docStringTracker = new DocStringTracker();
 
     for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex++) {
       const line = document.lineAt(lineIndex);
       const lineText = line.text;
-      const trimmedLine = lineText.trim();
 
-      // Handle doc string blocks (""" or ```)
-      if (!insideDocString) {
-        if (trimmedLine.startsWith('"""') || trimmedLine.startsWith("```")) {
-          docStringDelimiter = trimmedLine.substring(0, 3);
-          // Check if it also ends on the same line
-          if (trimmedLine.length > 3 && trimmedLine.endsWith(docStringDelimiter)) {
-            // Single line doc string, skip this line
-            continue;
-          }
-          insideDocString = true;
-          continue;
-        }
-      } else {
-        // Inside doc string - check if this line ends it
-        if (docStringDelimiter && trimmedLine.endsWith(docStringDelimiter)) {
-          insideDocString = false;
-          docStringDelimiter = null;
-        }
-        // Skip all lines inside doc strings
+      // Skip lines inside doc string blocks
+      if (docStringTracker.processLine(lineText)) {
         continue;
       }
 
