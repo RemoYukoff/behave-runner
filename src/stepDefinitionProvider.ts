@@ -40,9 +40,11 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
   private cache = new Map<string, FileCache>();
 
   /**
-   * Track the last known definitions count to invalidate cache when Python files change.
+   * Track the last known scanner version to invalidate cache when Python files change.
+   * Using version instead of count ensures cache invalidation even when a step is
+   * renamed (same count, different content).
    */
-  private lastDefinitionsCount = 0;
+  private lastScannerVersion = 0;
 
   /**
    * Provide the definition location for a step at the given position.
@@ -58,13 +60,13 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
 
     // Check if we have a valid cache entry
     const scanner = getStepScanner();
-    const currentDefinitionsCount = scanner.getAllDefinitions().length;
+    const currentScannerVersion = scanner.getVersion();
 
     if (cached) {
       // Invalidate if document changed or Python definitions changed
       const isValid =
         cached.documentVersion === document.version &&
-        this.lastDefinitionsCount === currentDefinitionsCount;
+        this.lastScannerVersion === currentScannerVersion;
 
       if (isValid) {
         // Check if cursor is within the step text range
@@ -76,8 +78,8 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
       }
     }
 
-    // Update definitions count tracker
-    this.lastDefinitionsCount = currentDefinitionsCount;
+    // Update scanner version tracker
+    this.lastScannerVersion = currentScannerVersion;
 
     // Compute the result
     const result = await this.computeDefinition(document, position);

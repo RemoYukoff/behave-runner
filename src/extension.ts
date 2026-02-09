@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import { BehaveDefinitionProvider } from "./stepDefinitionProvider";
-import { BehaveReferenceProvider } from "./stepReferenceProvider";
-import { BehaveStepUsageProvider } from "./stepUsageProvider";
+import { BehaveStepLocationProvider } from "./stepLocationProvider";
 import { StepCompletionProvider } from "./stepCompletionProvider";
 import { StepDiagnosticsProvider } from "./stepDiagnosticsProvider";
 import { BehaveCodeLensProvider } from "./codeLensProvider";
@@ -37,22 +36,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.languages.registerDefinitionProvider(languageSelector, definitionProvider)
   );
 
-  // Register the Reference Provider for Find References (from Python step decorators)
-  const referenceProvider = new BehaveReferenceProvider();
+  // Register the Step Location Provider for Python files
+  // Handles both "Go to Definition" and "Find References" for step functions
+  const stepLocationProvider = new BehaveStepLocationProvider();
+  const pythonSelector: vscode.DocumentSelector = { language: "python", scheme: "file" };
   context.subscriptions.push(
-    vscode.languages.registerReferenceProvider(
-      { language: "python", scheme: "file" },
-      referenceProvider
-    )
-  );
-
-  // Register the Definition Provider for Ctrl+Click on step functions (shows usages in .feature files)
-  const stepUsageProvider = new BehaveStepUsageProvider();
-  context.subscriptions.push(
-    vscode.languages.registerDefinitionProvider(
-      { language: "python", scheme: "file" },
-      stepUsageProvider
-    )
+    vscode.languages.registerDefinitionProvider(pythonSelector, stepLocationProvider),
+    vscode.languages.registerReferenceProvider(pythonSelector, stepLocationProvider)
   );
 
   // Register the Completion Provider for step autocomplete in .feature files

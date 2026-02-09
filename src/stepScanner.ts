@@ -2,7 +2,10 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import { StepDefinition, StepKeyword, IStepScanner } from "./types";
 import { behavePatternToRegex } from "./stepMatcher";
-import { DECORATOR_REGEXES_WITH_INDENT } from "./constants";
+import {
+  DECORATOR_REGEXES_WITH_INDENT,
+  DEFAULT_STEP_DEFINITION_PATTERNS,
+} from "./constants";
 import { logger } from "./logger";
 
 /**
@@ -13,6 +16,7 @@ export class StepScanner implements IStepScanner {
   private definitions: Map<string, StepDefinition[]> = new Map();
   private fileWatcher: vscode.FileSystemWatcher | null = null;
   private initialized = false;
+  private version = 0;
 
   /**
    * Initialize the scanner and start watching for file changes.
@@ -58,11 +62,20 @@ export class StepScanner implements IStepScanner {
   }
 
   /**
+   * Get the current cache version.
+   * Increments whenever definitions change, useful for cache invalidation.
+   */
+  public getVersion(): number {
+    return this.version;
+  }
+
+  /**
    * Force a rescan of all files.
    */
   public async rescan(): Promise<void> {
     this.definitions.clear();
     await this.scanAllFiles();
+    this.version++;
   }
 
   /**
@@ -70,12 +83,10 @@ export class StepScanner implements IStepScanner {
    */
   private getPatterns(): string[] {
     const config = vscode.workspace.getConfiguration("behaveRunner");
-    return config.get<string[]>("stepDefinitions.patterns", [
-      "**/steps/**/*.py",
-      "**/*_steps.py",
-      "**/step_*.py",
-      "**/steps.py",
-    ]);
+    return config.get<string[]>(
+      "stepDefinitions.patterns",
+      [...DEFAULT_STEP_DEFINITION_PATTERNS]
+    );
   }
 
   /**
@@ -104,9 +115,13 @@ export class StepScanner implements IStepScanner {
       const content = await fs.promises.readFile(filePath, "utf-8");
       const definitions = this.parseFileContent(filePath, content);
       this.definitions.set(filePath, definitions);
+      this.version++;
     } catch (error) {
       // File might have been deleted or is inaccessible
-      this.definitions.delete(filePath);
+      logger.debug(`Failed to scan step file: ${filePath}`, error);
+      if (this.definitions.delete(filePath)) {
+        this.version++;
+      }
     }
   }
 
@@ -201,7 +216,9 @@ export class StepScanner implements IStepScanner {
     });
 
     this.fileWatcher.onDidDelete((uri) => {
-      this.definitions.delete(uri.fsPath);
+      if (this.definitions.delete(uri.fsPath)) {
+        this.version++;
+      }
     });
   }
 

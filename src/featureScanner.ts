@@ -2,7 +2,12 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import { FeatureStep, StepKeyword, IFeatureScanner } from "./types";
 import { behavePatternToRegex, parseStepLine } from "./stepMatcher";
-import { STRUCTURAL_KEYWORD_REGEX, STEP_KEYWORD_REGEX } from "./constants";
+import {
+  STRUCTURAL_KEYWORD_REGEX,
+  STEP_KEYWORD_REGEX,
+  DEFAULT_FEATURE_FILE_PATTERNS,
+} from "./constants";
+import { logger } from "./logger";
 
 /**
  * Scans .feature files in the workspace for steps.
@@ -93,7 +98,10 @@ export class FeatureScanner implements IFeatureScanner {
    */
   private getPatterns(): string[] {
     const config = vscode.workspace.getConfiguration("behaveRunner");
-    return config.get<string[]>("featureFiles.patterns", ["**/*.feature"]);
+    return config.get<string[]>(
+      "featureFiles.patterns",
+      [...DEFAULT_FEATURE_FILE_PATTERNS]
+    );
   }
 
   /**
@@ -124,6 +132,7 @@ export class FeatureScanner implements IFeatureScanner {
       this.steps.set(filePath, steps);
     } catch (error) {
       // File might have been deleted or is inaccessible
+      logger.debug(`Failed to scan feature file: ${filePath}`, error);
       this.steps.delete(filePath);
     }
   }

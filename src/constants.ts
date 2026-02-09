@@ -128,3 +128,20 @@ export const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
  * Groups: 1=name, 2=type (optional)
  */
 export const BEHAVE_PLACEHOLDER_REGEX = /\{(\w+)(?::(\w))?\}/g;
+
+/**
+ * Default glob patterns for Python step definition files.
+ * These match the defaults in package.json configuration.
+ */
+export const DEFAULT_STEP_DEFINITION_PATTERNS = [
+  "**/steps/**/*.py",
+  "**/*_steps.py",
+  "**/step_*.py",
+  "**/steps.py",
+] as const;
+
+/**
+ * Default glob patterns for Gherkin feature files.
+ * These match the defaults in package.json configuration.
+ */
+export const DEFAULT_FEATURE_FILE_PATTERNS = ["**/*.feature"] as const;

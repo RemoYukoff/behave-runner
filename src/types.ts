@@ -108,6 +108,8 @@ export interface IStepScanner extends IScanner {
   getAllDefinitions(): StepDefinition[];
   /** Get step definitions from a specific file */
   getDefinitionsForFile(filePath: string): StepDefinition[];
+  /** Get the current cache version (increments on any change) */
+  getVersion(): number;
 }
 
 /**
