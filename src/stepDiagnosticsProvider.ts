@@ -3,6 +3,7 @@ import { getStepScanner } from "./stepScanner";
 import { findMatchingDefinitions, parseStepLine } from "./stepMatcher";
 import { StepKeyword } from "./types";
 import { DocStringTracker } from "./utils";
+import { STRUCTURAL_KEYWORD_REGEX, STEP_KEYWORD_REGEX } from "./constants";
 
 /**
  * Provides diagnostics for undefined steps in .feature files.
@@ -81,7 +82,7 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
       const stepInfo = parseStepLine(lineText, previousKeyword);
       if (!stepInfo) {
         // Check for structural keywords that reset the context
-        if (lineText.match(/^\s*(Scenario|Feature|Background|Examples)/i)) {
+        if (STRUCTURAL_KEYWORD_REGEX.test(lineText)) {
           previousKeyword = null;
         }
         continue;
@@ -101,8 +102,8 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
 
       if (matches.length === 0) {
         // No matching definition found - create a diagnostic
-        const stepMatch = lineText.match(/^\s*(Given|When|Then|And|But|\*)\s+/i);
-        const startChar = stepMatch ? stepMatch[0].length : 0;
+        const stepMatch = lineText.match(STEP_KEYWORD_REGEX);
+        const startChar = stepMatch ? stepMatch[0].length - stepMatch[2].length : 0;
 
         const range = new vscode.Range(
           lineIndex,

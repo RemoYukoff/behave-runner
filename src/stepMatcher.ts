@@ -1,4 +1,10 @@
 import { StepDefinition, StepKeyword } from "./types";
+import {
+  STEP_KEYWORD_REGEX,
+  DIRECT_KEYWORD_REGEX,
+  CONTINUATION_KEYWORD_REGEX,
+  EMPTY_OR_COMMENT_REGEX,
+} from "./constants";
 
 /**
  * Behave type placeholders and their regex equivalents
@@ -122,7 +128,7 @@ export function parseStepLine(
   line: string,
   previousKeyword: StepKeyword | null
 ): { keyword: string; text: string; effectiveKeyword: StepKeyword | null } | null {
-  const stepMatch = line.match(/^\s*(Given|When|Then|And|But|\*)\s+(.+)$/i);
+  const stepMatch = line.match(STEP_KEYWORD_REGEX);
 
   if (!stepMatch) {
     return null;
@@ -168,13 +174,13 @@ export function resolveEffectiveKeyword(
 ): StepKeyword | null {
   // First check if the current line has a direct keyword (Given/When/Then)
   const currentLine = lines[targetLine];
-  const directMatch = currentLine.match(/^\s*(Given|When|Then)\s+/i);
+  const directMatch = currentLine.match(DIRECT_KEYWORD_REGEX);
   if (directMatch) {
     return directMatch[1].toLowerCase() as StepKeyword;
   }
 
   // If current line is And/But/*, search backwards for parent keyword
-  const isAndButStar = currentLine.match(/^\s*(And|But|\*)\s+/i);
+  const isAndButStar = currentLine.match(CONTINUATION_KEYWORD_REGEX);
   if (!isAndButStar) {
     // Not a step line
     return null;
@@ -185,20 +191,20 @@ export function resolveEffectiveKeyword(
     const line = lines[i];
     
     // Found a direct keyword - this is the parent
-    const parentMatch = line.match(/^\s*(Given|When|Then)\s+/i);
+    const parentMatch = line.match(DIRECT_KEYWORD_REGEX);
     if (parentMatch) {
       return parentMatch[1].toLowerCase() as StepKeyword;
     }
 
     // Skip And/But/* lines, continue searching
-    const andButMatch = line.match(/^\s*(And|But|\*)\s+/i);
+    const andButMatch = line.match(CONTINUATION_KEYWORD_REGEX);
     if (andButMatch) {
       continue;
     }
 
     // If we hit a non-step line (like Scenario:, Feature:, empty line, etc.)
     // we stop searching - no parent keyword found
-    const isEmptyOrComment = line.match(/^\s*(#.*)?$/);
+    const isEmptyOrComment = line.match(EMPTY_OR_COMMENT_REGEX);
     if (!isEmptyOrComment) {
       // Hit a structural line like Scenario:, break the search
       break;

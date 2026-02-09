@@ -67,8 +67,32 @@ export const FUNCTION_DEF_REGEX = /^\s*def\s+(\w+)\s*\(/;
 
 /**
  * Regex to match Gherkin step keywords in feature files.
+ * Groups: 1=keyword, 2=step text
  */
 export const STEP_KEYWORD_REGEX = /^\s*(Given|When|Then|And|But|\*)\s+(.+)$/i;
+
+/**
+ * Regex to match Gherkin step keywords for autocompletion (allows partial/empty text).
+ * Groups: 1=keyword, 2=partial text (may be empty)
+ */
+export const STEP_KEYWORD_PARTIAL_REGEX = /^\s*(Given|When|Then|And|But|\*)\s*(.*)/i;
+
+/**
+ * Regex to match direct Gherkin step keywords (Given/When/Then only).
+ * Groups: 1=keyword
+ */
+export const DIRECT_KEYWORD_REGEX = /^\s*(Given|When|Then)\s+/i;
+
+/**
+ * Regex to match continuation keywords (And/But/*).
+ * Groups: 1=keyword
+ */
+export const CONTINUATION_KEYWORD_REGEX = /^\s*(And|But|\*)\s+/i;
+
+/**
+ * Regex to match empty lines or comment lines.
+ */
+export const EMPTY_OR_COMMENT_REGEX = /^\s*(#.*)?$/;
 
 /**
  * Regex to match Gherkin structural keywords that reset step context.

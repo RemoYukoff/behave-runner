@@ -3,6 +3,7 @@ import * as path from "path";
 import { getStepScanner } from "./stepScanner";
 import { resolveEffectiveKeyword } from "./stepMatcher";
 import { StepDefinition, StepKeyword } from "./types";
+import { STEP_KEYWORD_PARTIAL_REGEX } from "./constants";
 
 /**
  * Converts a Behave pattern to a VS Code snippet string.
@@ -33,7 +34,7 @@ function behavePatternToSnippet(pattern: string): string {
 function parseCurrentLine(
   line: string
 ): { keyword: string; partialText: string; keywordEnd: number } | null {
-  const match = line.match(/^\s*(Given|When|Then|And|But|\*)\s*(.*)/i);
+  const match = line.match(STEP_KEYWORD_PARTIAL_REGEX);
   if (!match) {
     return null;
   }

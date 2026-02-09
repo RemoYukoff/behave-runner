@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { DECORATOR_PATTERNS, FUNCTION_DEF_REGEX } from "./constants";
+import { DECORATOR_PATTERNS, FUNCTION_DEF_REGEX, EMPTY_OR_COMMENT_REGEX } from "./constants";
 
 /**
  * Represents a parsed step decorator.
@@ -60,7 +60,7 @@ export function findDecoratorsAbove(
     const lineText = document.lineAt(i).text;
 
     // Skip empty lines and comments between decorators
-    if (lineText.match(/^\s*(#.*)?$/)) {
+    if (EMPTY_OR_COMMENT_REGEX.test(lineText)) {
       continue;
     }
 

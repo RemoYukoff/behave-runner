@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import { FeatureStep, StepKeyword } from "./types";
 import { behavePatternToRegex, parseStepLine } from "./stepMatcher";
+import { STRUCTURAL_KEYWORD_REGEX, STEP_KEYWORD_REGEX } from "./constants";
 
 /**
  * Scans .feature files in the workspace for steps.
@@ -139,7 +140,7 @@ export class FeatureScanner {
       const line = lines[lineIndex];
 
       // Check for Scenario/Feature which reset the keyword context
-      if (line.match(/^\s*(Feature|Scenario|Scenario Outline|Background|Examples):/i)) {
+      if (STRUCTURAL_KEYWORD_REGEX.test(line)) {
         previousKeyword = null;
         continue;
       }
@@ -147,8 +148,8 @@ export class FeatureScanner {
       const stepInfo = parseStepLine(line, previousKeyword);
       if (stepInfo) {
         // Calculate character position where the step text starts
-        const keywordMatch = line.match(/^\s*(Given|When|Then|And|But)\s+/i);
-        const character = keywordMatch ? keywordMatch[0].length : 0;
+        const keywordMatch = line.match(STEP_KEYWORD_REGEX);
+        const character = keywordMatch ? keywordMatch[0].length - keywordMatch[2].length : 0;
 
         steps.push({
           text: stepInfo.text,
