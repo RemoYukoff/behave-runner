@@ -1,0 +1,77 @@
+/**
+ * Centralized constants for Behave step decorator patterns.
+ * These regex patterns are used across multiple modules to parse Python step definitions.
+ */
+
+/**
+ * Regex patterns to match Behave step decorators in Python files.
+ * These patterns are used for simple matching (without capturing indent).
+ * Groups: 1=keyword, 2=pattern
+ */
+export const DECORATOR_PATTERNS = [
+  // @given("pattern"), @when("pattern"), @then("pattern"), @step("pattern")
+  /^\s*@(given|when|then|step)\s*\(\s*(?:u?r?)?"((?:[^"\\]|\\.)*)"\s*\)/i,
+  // @given('pattern'), @when('pattern'), @then('pattern'), @step('pattern')
+  /^\s*@(given|when|then|step)\s*\(\s*(?:u?r?)?'((?:[^'\\]|\\.)*)'\s*\)/i,
+  // @given(re.compile(r"..."))
+  /^\s*@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?"((?:[^"\\]|\\.)*)"/i,
+  // @given(re.compile(r'...'))
+  /^\s*@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?'((?:[^'\\]|\\.)*)'/i,
+] as const;
+
+/**
+ * Regex to match Behave step decorators with double quotes, capturing indent.
+ * Groups: 1=indent, 2=keyword, 3=pattern
+ * Used by StepScanner for line-by-line parsing with position tracking.
+ */
+export const DECORATOR_REGEX_DOUBLE =
+  /^(\s*)@(given|when|then|step)\s*\(\s*(?:u?r?)?"((?:[^"\\]|\\.)*)"\s*\)/i;
+
+/**
+ * Regex to match Behave step decorators with single quotes, capturing indent.
+ * Groups: 1=indent, 2=keyword, 3=pattern
+ * Used by StepScanner for line-by-line parsing with position tracking.
+ */
+export const DECORATOR_REGEX_SINGLE =
+  /^(\s*)@(given|when|then|step)\s*\(\s*(?:u?r?)?'((?:[^'\\]|\\.)*)'\s*\)/i;
+
+/**
+ * Regex for decorators with re.compile() and double quotes, capturing indent.
+ * Groups: 1=indent, 2=keyword, 3=pattern
+ */
+export const DECORATOR_REGEX_COMPILE_DOUBLE =
+  /^(\s*)@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?"((?:[^"\\]|\\.)*)"/i;
+
+/**
+ * Regex for decorators with re.compile() and single quotes, capturing indent.
+ * Groups: 1=indent, 2=keyword, 3=pattern
+ */
+export const DECORATOR_REGEX_COMPILE_SINGLE =
+  /^(\s*)@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?'((?:[^'\\]|\\.)*)'/i;
+
+/**
+ * All decorator regex patterns with indent capture, for iteration.
+ */
+export const DECORATOR_REGEXES_WITH_INDENT = [
+  DECORATOR_REGEX_DOUBLE,
+  DECORATOR_REGEX_SINGLE,
+  DECORATOR_REGEX_COMPILE_DOUBLE,
+  DECORATOR_REGEX_COMPILE_SINGLE,
+] as const;
+
+/**
+ * Regex to match a Python function definition.
+ * Group: 1=function name
+ */
+export const FUNCTION_DEF_REGEX = /^\s*def\s+(\w+)\s*\(/;
+
+/**
+ * Regex to match Gherkin step keywords in feature files.
+ */
+export const STEP_KEYWORD_REGEX = /^\s*(Given|When|Then|And|But|\*)\s+(.+)$/i;
+
+/**
+ * Regex to match Gherkin structural keywords that reset step context.
+ */
+export const STRUCTURAL_KEYWORD_REGEX =
+  /^\s*(Feature|Scenario|Scenario Outline|Background|Examples):/i;

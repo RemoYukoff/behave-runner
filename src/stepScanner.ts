@@ -2,32 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import { StepDefinition, StepKeyword } from "./types";
 import { behavePatternToRegex } from "./stepMatcher";
-
-/**
- * Regex to match Behave step decorators in Python files with double quotes.
- * Matches: @given("pattern"), @when("pattern"), @then(u"pattern"), @step("pattern")
- */
-const DECORATOR_REGEX_DOUBLE =
-  /^(\s*)@(given|when|then|step)\s*\(\s*(?:u?r?)?"((?:[^"\\]|\\.)*)"\s*\)/gim;
-
-/**
- * Regex to match Behave step decorators in Python files with single quotes.
- * Matches: @given('pattern'), @when('pattern'), @then(u'pattern'), @step('pattern')
- */
-const DECORATOR_REGEX_SINGLE =
-  /^(\s*)@(given|when|then|step)\s*\(\s*(?:u?r?)?'((?:[^'\\]|\\.)*)'\s*\)/gim;
-
-/**
- * Alternative regex for decorators with regex patterns: @given(re.compile(r"..."))
- */
-const DECORATOR_REGEX_COMPILE_DOUBLE =
-  /^(\s*)@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?"((?:[^"\\]|\\.)*)"/gim;
-
-/**
- * Alternative regex for decorators with regex patterns: @given(re.compile(r'...'))
- */
-const DECORATOR_REGEX_COMPILE_SINGLE =
-  /^(\s*)@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?'((?:[^'\\]|\\.)*)'/gim;
+import { DECORATOR_REGEXES_WITH_INDENT } from "./constants";
 
 /**
  * Scans Python files in the workspace for Behave step definitions.
@@ -145,17 +120,13 @@ export class StepScanner {
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
 
-      // Try standard decorator patterns (double quotes, then single quotes)
-      let match = this.matchDecorator(line, DECORATOR_REGEX_DOUBLE);
-      if (!match) {
-        match = this.matchDecorator(line, DECORATOR_REGEX_SINGLE);
-      }
-      if (!match) {
-        // Try re.compile patterns
-        match = this.matchDecorator(line, DECORATOR_REGEX_COMPILE_DOUBLE);
-      }
-      if (!match) {
-        match = this.matchDecorator(line, DECORATOR_REGEX_COMPILE_SINGLE);
+      // Try all decorator patterns
+      let match: { keyword: string; pattern: string; character: number } | null = null;
+      for (const regex of DECORATOR_REGEXES_WITH_INDENT) {
+        match = this.matchDecorator(line, regex);
+        if (match) {
+          break;
+        }
       }
 
       if (match) {
@@ -190,10 +161,7 @@ export class StepScanner {
     line: string,
     regex: RegExp
   ): { keyword: string; pattern: string; character: number } | null {
-    // Reset regex state
-    regex.lastIndex = 0;
-
-    const match = regex.exec(line);
+    const match = line.match(regex);
     if (!match) {
       return null;
     }
