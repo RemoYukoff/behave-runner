@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { getStepScanner } from "./stepScanner";
+import { getStepScanner } from "./services";
 import {
   findMatchingDefinitions,
   parseStepLine,
@@ -12,7 +12,7 @@ import { REGEX_SPECIAL_CHARS } from "./constants";
 /**
  * Cache entry for a line's definition lookup result.
  */
-interface CacheEntry {
+interface LineCacheEntry {
   /** Document version when this entry was created */
   documentVersion: number;
   /** The computed LocationLinks (null if no match) */
@@ -22,6 +22,11 @@ interface CacheEntry {
 }
 
 /**
+ * Cache for a single file, mapping line numbers to cache entries.
+ */
+type FileCache = Map<number, LineCacheEntry>;
+
+/**
  * Provides "Go to Definition" functionality for Behave steps.
  * Allows Ctrl+Click on steps in .feature files to navigate to their Python definitions.
  *
@@ -29,9 +34,10 @@ interface CacheEntry {
  */
 export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
   /**
-   * Cache: Map<"filePath:lineNumber", CacheEntry>
+   * Two-level cache: filePath -> lineNumber -> CacheEntry
+   * This structure allows efficient per-file operations and avoids string concatenation.
    */
-  private cache = new Map<string, CacheEntry>();
+  private cache = new Map<string, FileCache>();
 
   /**
    * Track the last known definitions count to invalidate cache when Python files change.
@@ -46,8 +52,9 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
     position: vscode.Position,
     _token: vscode.CancellationToken
   ): Promise<vscode.LocationLink[] | null> {
-    const cacheKey = this.getCacheKey(document, position.line);
-    const cached = this.cache.get(cacheKey);
+    const filePath = document.uri.fsPath;
+    const lineNumber = position.line;
+    const cached = this.getCachedEntry(filePath, lineNumber);
 
     // Check if we have a valid cache entry
     const scanner = getStepScanner();
@@ -76,7 +83,7 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
     const result = await this.computeDefinition(document, position);
 
     // Cache the result
-    this.cache.set(cacheKey, {
+    this.setCachedEntry(filePath, lineNumber, {
       documentVersion: document.version,
       locationLinks: result.locationLinks,
       originRange: result.originRange,
@@ -91,10 +98,23 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
   }
 
   /**
-   * Generate a cache key for a document line.
+   * Get a cached entry for a specific file and line.
    */
-  private getCacheKey(document: vscode.TextDocument, line: number): string {
-    return `${document.uri.fsPath}:${line}`;
+  private getCachedEntry(filePath: string, line: number): LineCacheEntry | undefined {
+    const fileCache = this.cache.get(filePath);
+    return fileCache?.get(line);
+  }
+
+  /**
+   * Set a cached entry for a specific file and line.
+   */
+  private setCachedEntry(filePath: string, line: number, entry: LineCacheEntry): void {
+    let fileCache = this.cache.get(filePath);
+    if (!fileCache) {
+      fileCache = new Map();
+      this.cache.set(filePath, fileCache);
+    }
+    fileCache.set(line, entry);
   }
 
   /**

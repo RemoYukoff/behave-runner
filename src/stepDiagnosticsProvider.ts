@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { getStepScanner } from "./stepScanner";
+import { getStepScanner } from "./services";
 import { findMatchingDefinitions, parseStepLine } from "./stepMatcher";
 import { StepKeyword } from "./types";
 import { DocStringTracker } from "./utils";

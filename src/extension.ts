@@ -1,17 +1,26 @@
-import * as path from "path";
-import * as fs from "fs";
 import * as vscode from "vscode";
 import { BehaveDefinitionProvider } from "./stepDefinitionProvider";
-import { getStepScanner, disposeStepScanner } from "./stepScanner";
 import { BehaveReferenceProvider } from "./stepReferenceProvider";
 import { BehaveStepUsageProvider } from "./stepUsageProvider";
-import { getFeatureScanner, disposeFeatureScanner } from "./featureScanner";
 import { StepCompletionProvider } from "./stepCompletionProvider";
 import { StepDiagnosticsProvider } from "./stepDiagnosticsProvider";
 import { BehaveCodeLensProvider } from "./codeLensProvider";
-import { RunScenarioArgs, InterpreterInfo } from "./types";
+import { runScenarioHandler, debugScenarioHandler } from "./commandHandlers";
+import { initializeServices, disposeServices } from "./services";
+import { logger } from "./logger";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // Initialize logger
+  logger.initialize();
+  logger.info("Behave Runner activating...");
+
+  // Initialize all services
+  const services = initializeServices();
+  await services.stepScanner.initialize();
+  await services.featureScanner.initialize();
+
+  logger.info("Scanners initialized");
+
   const codeLensProvider = new BehaveCodeLensProvider();
   const languageSelector: vscode.DocumentSelector = [
     { language: "behave", scheme: "file" },
@@ -21,14 +30,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.languages.registerCodeLensProvider(languageSelector, codeLensProvider)
   );
-
-  // Initialize the step scanner for Go to Definition
-  const stepScanner = getStepScanner();
-  await stepScanner.initialize();
-
-  // Initialize the feature scanner for Find References
-  const featureScanner = getFeatureScanner();
-  await featureScanner.initialize();
 
   // Register the Definition Provider for Go to Definition (Ctrl+Click)
   const definitionProvider = new BehaveDefinitionProvider();
@@ -70,10 +71,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Refresh diagnostics when Python step files change
   const pythonWatcher = vscode.workspace.createFileSystemWatcher("**/*.py");
-  pythonWatcher.onDidChange(() => diagnosticsProvider.refreshAll());
-  pythonWatcher.onDidCreate(() => diagnosticsProvider.refreshAll());
-  pythonWatcher.onDidDelete(() => diagnosticsProvider.refreshAll());
-  context.subscriptions.push(pythonWatcher);
+  context.subscriptions.push(
+    pythonWatcher,
+    pythonWatcher.onDidChange(() => diagnosticsProvider.refreshAll()),
+    pythonWatcher.onDidCreate(() => diagnosticsProvider.refreshAll()),
+    pythonWatcher.onDidDelete(() => diagnosticsProvider.refreshAll())
+  );
 
   // Clear definition cache when documents close to prevent memory leaks
   context.subscriptions.push(
@@ -82,136 +85,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  const runScenarioCommand = vscode.commands.registerCommand(
-    "behaveRunner.runScenario",
-    async (args: RunScenarioArgs) => {
-      if (!args?.filePath) {
-        vscode.window.showErrorMessage("Behave Runner: missing scenario information.");
-        return;
-      }
-
-      const filePath = args.filePath.replace(/"/g, '\\"');
-      const scenarioName = args.scenarioName ? args.scenarioName.replace(/"/g, '\\"') : "";
-      const behaveCommand = args.runAll
-        ? `behave "${filePath}"`
-        : `behave "${filePath}" -n "${scenarioName}"`;
-
-      const interpreter = getPythonInterpreterPath(args.filePath, args.workspaceRoot);
-      const command = interpreter.path
-        ? `"${interpreter.path}" -m behave "${filePath}" -n "${scenarioName}"`
-        : behaveCommand;
-
-      let terminal = vscode.window.activeTerminal;
-      if (!terminal) {
-        terminal = vscode.window.createTerminal();
-      }
-      terminal.show(true);
-      terminal.sendText(command, true);
-    }
+  // Register commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand("behaveRunner.runScenario", runScenarioHandler),
+    vscode.commands.registerCommand("behaveRunner.debugScenario", debugScenarioHandler)
   );
 
-  const debugScenarioCommand = vscode.commands.registerCommand(
-    "behaveRunner.debugScenario",
-    async (args: RunScenarioArgs) => {
-      if (!args?.filePath) {
-        vscode.window.showErrorMessage("Behave Runner: missing scenario information.");
-        return;
-      }
-
-      const scenarioName = args.scenarioName ?? "";
-      if (!args.runAll && !scenarioName) {
-        vscode.window.showErrorMessage("Behave Runner: missing scenario name for debug.");
-        return;
-      }
-
-      const debugArgs = args.runAll ? [args.filePath] : [args.filePath, "-n", scenarioName];
-
-      const workspaceFolder = vscode.workspace.getWorkspaceFolder(
-        vscode.Uri.file(args.filePath)
-      );
-      const justMyCode = getJustMyCodeSetting(args.filePath);
-      const debugConfig: vscode.DebugConfiguration = {
-        type: "python",
-        request: "launch",
-        name: args.runAll ? "Behave: Feature" : `Behave: Scenario ${scenarioName}`,
-        module: "behave",
-        args: debugArgs,
-        cwd: args.workspaceRoot,
-        console: "integratedTerminal",
-        justMyCode,
-      };
-
-      const started = await vscode.debug.startDebugging(
-        workspaceFolder ?? undefined,
-        debugConfig
-      );
-      if (!started) {
-        vscode.window.showErrorMessage("Behave Runner: failed to start debugger.");
-      }
-    }
-  );
-
-  context.subscriptions.push(runScenarioCommand, debugScenarioCommand);
+  logger.info("Behave Runner activated successfully");
 }
 
 export function deactivate(): void {
-  disposeStepScanner();
-  disposeFeatureScanner();
-}
-
-function getPythonInterpreterPath(
-  resourcePath: string,
-  workspaceRoot: string
-): InterpreterInfo {
-  const resourceUri = vscode.Uri.file(resourcePath);
-  const pythonConfig = vscode.workspace.getConfiguration("python", resourceUri);
-
-  const defaultInterpreter = pythonConfig.get<string>("defaultInterpreterPath");
-  if (defaultInterpreter && defaultInterpreter.trim().length > 0) {
-    const resolved = resolveInterpreterPath(defaultInterpreter, workspaceRoot);
-    return {
-      path: resolved ?? undefined,
-      source: "python.defaultInterpreterPath",
-    };
-  }
-
-  const legacyInterpreter = pythonConfig.get<string>("pythonPath");
-  if (legacyInterpreter && legacyInterpreter.trim().length > 0) {
-    const resolved = resolveInterpreterPath(legacyInterpreter, workspaceRoot);
-    return {
-      path: resolved ?? undefined,
-      source: "python.pythonPath",
-    };
-  }
-
-  return {
-    path: undefined,
-    source: "none",
-  };
-}
-
-function resolveInterpreterPath(
-  interpreterPath: string,
-  workspaceRoot: string
-): string | null {
-  const trimmed = interpreterPath.trim();
-  if (path.isAbsolute(trimmed) && fs.existsSync(trimmed)) {
-    return trimmed;
-  }
-
-  const venvCandidates = [".venv", "venv"];
-  for (const venvFolder of venvCandidates) {
-    const venvPython = path.join(workspaceRoot, venvFolder, "bin", "python");
-    if (fs.existsSync(venvPython)) {
-      return venvPython;
-    }
-  }
-
-  return null;
-}
-
-function getJustMyCodeSetting(resourcePath: string): boolean {
-  const resourceUri = vscode.Uri.file(resourcePath);
-  const config = vscode.workspace.getConfiguration("behaveRunner", resourceUri);
-  return config.get<boolean>("debug.justMyCode", true);
+  logger.info("Behave Runner deactivating...");
+  disposeServices();
+  logger.dispose();
 }

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
-import { FeatureStep, StepKeyword } from "./types";
+import { FeatureStep, StepKeyword, IFeatureScanner } from "./types";
 import { behavePatternToRegex, parseStepLine } from "./stepMatcher";
 import { STRUCTURAL_KEYWORD_REGEX, STEP_KEYWORD_REGEX } from "./constants";
 
@@ -8,7 +8,7 @@ import { STRUCTURAL_KEYWORD_REGEX, STEP_KEYWORD_REGEX } from "./constants";
  * Scans .feature files in the workspace for steps.
  * Provides caching and file watching for performance.
  */
-export class FeatureScanner {
+export class FeatureScanner implements IFeatureScanner {
   private steps: Map<string, FeatureStep[]> = new Map();
   private regexCache: Map<string, RegExp> = new Map();
   private fileWatcher: vscode.FileSystemWatcher | null = null;
@@ -195,25 +195,3 @@ export class FeatureScanner {
   }
 }
 
-// Singleton instance
-let scannerInstance: FeatureScanner | null = null;
-
-/**
- * Get the singleton FeatureScanner instance.
- */
-export function getFeatureScanner(): FeatureScanner {
-  if (!scannerInstance) {
-    scannerInstance = new FeatureScanner();
-  }
-  return scannerInstance;
-}
-
-/**
- * Dispose the singleton FeatureScanner instance.
- */
-export function disposeFeatureScanner(): void {
-  if (scannerInstance) {
-    scannerInstance.dispose();
-    scannerInstance = null;
-  }
-}

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import { getStepScanner } from "./stepScanner";
+import { getStepScanner } from "./services";
 import { resolveEffectiveKeyword } from "./stepMatcher";
 import { StepDefinition, StepKeyword } from "./types";
 import { STEP_KEYWORD_PARTIAL_REGEX, BEHAVE_PLACEHOLDER_REGEX } from "./constants";

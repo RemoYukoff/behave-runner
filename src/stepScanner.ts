@@ -1,14 +1,15 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
-import { StepDefinition, StepKeyword } from "./types";
+import { StepDefinition, StepKeyword, IStepScanner } from "./types";
 import { behavePatternToRegex } from "./stepMatcher";
 import { DECORATOR_REGEXES_WITH_INDENT } from "./constants";
+import { logger } from "./logger";
 
 /**
  * Scans Python files in the workspace for Behave step definitions.
  * Provides caching and file watching for performance.
  */
-export class StepScanner {
+export class StepScanner implements IStepScanner {
   private definitions: Map<string, StepDefinition[]> = new Map();
   private fileWatcher: vscode.FileSystemWatcher | null = null;
   private initialized = false;
@@ -143,9 +144,7 @@ export class StepScanner {
           });
         } catch {
           // Invalid pattern, skip this definition
-          console.warn(
-            `Invalid step pattern in ${filePath}:${lineIndex + 1}: ${pattern}`
-          );
+          logger.warn(`Invalid step pattern in ${filePath}:${lineIndex + 1}: ${pattern}`);
         }
       }
     }
@@ -251,25 +250,3 @@ export class StepScanner {
   }
 }
 
-// Singleton instance
-let scannerInstance: StepScanner | null = null;
-
-/**
- * Get the singleton StepScanner instance.
- */
-export function getStepScanner(): StepScanner {
-  if (!scannerInstance) {
-    scannerInstance = new StepScanner();
-  }
-  return scannerInstance;
-}
-
-/**
- * Dispose the singleton StepScanner instance.
- */
-export function disposeStepScanner(): void {
-  if (scannerInstance) {
-    scannerInstance.dispose();
-    scannerInstance = null;
-  }
-}

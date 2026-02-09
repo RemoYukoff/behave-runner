@@ -1,7 +1,19 @@
 /**
- * Supported Behave step keywords
+ * Supported Behave step keywords as a const object.
+ * Use these constants instead of string literals for type safety.
  */
-export type StepKeyword = "given" | "when" | "then" | "step";
+export const STEP_KEYWORDS = {
+  GIVEN: "given",
+  WHEN: "when",
+  THEN: "then",
+  STEP: "step",
+} as const;
+
+/**
+ * Type representing a valid step keyword.
+ * Derived from STEP_KEYWORDS for type safety.
+ */
+export type StepKeyword = (typeof STEP_KEYWORDS)[keyof typeof STEP_KEYWORDS];
 
 /**
  * Represents a step definition found in a Python file
@@ -73,4 +85,37 @@ export interface InterpreterInfo {
   path: string | undefined;
   /** Source of the interpreter configuration */
   source: "python.defaultInterpreterPath" | "python.pythonPath" | "none";
+}
+
+/**
+ * Base interface for file scanners.
+ * Provides common lifecycle and scanning operations.
+ */
+export interface IScanner {
+  /** Initialize the scanner and start watching for file changes */
+  initialize(): Promise<void>;
+  /** Force a rescan of all files */
+  rescan(): Promise<void>;
+  /** Dispose of resources */
+  dispose(): void;
+}
+
+/**
+ * Interface for scanning Python step definitions.
+ */
+export interface IStepScanner extends IScanner {
+  /** Get all step definitions from the cache */
+  getAllDefinitions(): StepDefinition[];
+  /** Get step definitions from a specific file */
+  getDefinitionsForFile(filePath: string): StepDefinition[];
+}
+
+/**
+ * Interface for scanning feature file steps.
+ */
+export interface IFeatureScanner extends IScanner {
+  /** Get all feature steps from the cache */
+  getAllSteps(): FeatureStep[];
+  /** Find all feature steps that match a given pattern */
+  findMatchingSteps(pattern: string, keyword?: StepKeyword): FeatureStep[];
 }
