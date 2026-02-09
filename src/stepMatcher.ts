@@ -4,6 +4,8 @@ import {
   DIRECT_KEYWORD_REGEX,
   CONTINUATION_KEYWORD_REGEX,
   EMPTY_OR_COMMENT_REGEX,
+  REGEX_SPECIAL_CHARS,
+  BEHAVE_PLACEHOLDER_REGEX,
 } from "./constants";
 
 /**
@@ -46,7 +48,7 @@ const OUTLINE_PLACEHOLDER_PATTERN = "<[^>]+>";
  */
 export function behavePatternToRegex(pattern: string): RegExp {
   // Escape regex special characters except for our placeholders
-  let regexStr = pattern.replace(/[.*+?^${}()|[\]\\]/g, (char) => {
+  let regexStr = pattern.replace(REGEX_SPECIAL_CHARS, (char) => {
     // Don't escape curly braces yet, we'll handle them specially
     if (char === "{" || char === "}") {
       return char;
@@ -58,7 +60,7 @@ export function behavePatternToRegex(pattern: string): RegExp {
   // 1. The expected value type (e.g., \d+ for integers)
   // 2. OR a Scenario Outline placeholder (<name>)
   // Pattern: {name} or {name:type}
-  regexStr = regexStr.replace(/\{(\w+)(?::(\w))?\}/g, (_, _name, type) => {
+  regexStr = regexStr.replace(BEHAVE_PLACEHOLDER_REGEX, (_, _name, type) => {
     const typePattern = type && BEHAVE_TYPE_PATTERNS[type]
       ? BEHAVE_TYPE_PATTERNS[type]
       : DEFAULT_PLACEHOLDER_PATTERN;

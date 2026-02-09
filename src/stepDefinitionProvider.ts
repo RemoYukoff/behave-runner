@@ -7,6 +7,7 @@ import {
 } from "./stepMatcher";
 import { StepKeyword } from "./types";
 import { isInsideDocString } from "./utils";
+import { REGEX_SPECIAL_CHARS } from "./constants";
 
 /**
  * Cache entry for a line's definition lookup result.
@@ -187,7 +188,7 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
     const lineText = line.text;
 
     // Escape special regex characters in keyword (e.g., * becomes \*)
-    const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedKeyword = keyword.replace(REGEX_SPECIAL_CHARS, "\\$&");
 
     // Find the keyword position
     const keywordMatch = lineText.match(

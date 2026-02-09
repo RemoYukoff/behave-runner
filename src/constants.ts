@@ -116,3 +116,15 @@ export const SCENARIO_LINE_REGEX = /^\s*Scenario(?: Outline)?:\s*(.+)$/;
  * Regex to match any Python decorator.
  */
 export const PYTHON_DECORATOR_REGEX = /^\s*@\w+/;
+
+/**
+ * Regex to match special characters that need escaping in regex patterns.
+ * Used when converting user input to a regex-safe string.
+ */
+export const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * Regex to match Behave placeholder syntax: {name} or {name:type}.
+ * Groups: 1=name, 2=type (optional)
+ */
+export const BEHAVE_PLACEHOLDER_REGEX = /\{(\w+)(?::(\w))?\}/g;

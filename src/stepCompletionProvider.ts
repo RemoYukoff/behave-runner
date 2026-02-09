@@ -3,7 +3,7 @@ import * as path from "path";
 import { getStepScanner } from "./stepScanner";
 import { resolveEffectiveKeyword } from "./stepMatcher";
 import { StepDefinition, StepKeyword } from "./types";
-import { STEP_KEYWORD_PARTIAL_REGEX } from "./constants";
+import { STEP_KEYWORD_PARTIAL_REGEX, BEHAVE_PLACEHOLDER_REGEX } from "./constants";
 
 /**
  * Converts a Behave pattern to a VS Code snippet string.
@@ -20,7 +20,7 @@ function behavePatternToSnippet(pattern: string): string {
   let snippetIndex = 1;
 
   // Replace Behave placeholders {name} or {name:type} with VS Code snippet placeholders
-  return pattern.replace(/\{(\w+)(?::\w)?\}/g, (_, name) => {
+  return pattern.replace(BEHAVE_PLACEHOLDER_REGEX, (_, name) => {
     return `\${${snippetIndex++}:${name}}`;
   });
 }
