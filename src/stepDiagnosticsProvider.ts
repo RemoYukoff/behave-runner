@@ -4,6 +4,7 @@ import { findMatchingDefinitions, parseStepLine } from "./stepMatcher";
 import { StepKeyword } from "./types";
 import { DocStringTracker } from "./utils";
 import { STRUCTURAL_KEYWORD_REGEX, STEP_KEYWORD_REGEX } from "./constants";
+import { logger } from "./logger";
 
 /**
  * Provides diagnostics for undefined steps in .feature files.
@@ -125,6 +126,10 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
     }
 
     this.diagnosticCollection.set(document.uri, diagnostics);
+
+    if (diagnostics.length > 0) {
+      logger.debug(`Found ${diagnostics.length} undefined step(s) in ${document.fileName}`);
+    }
   }
 
   /**

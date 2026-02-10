@@ -3,6 +3,7 @@ import * as fs from "fs";
 import { FeatureStep, StepKeyword } from "./types";
 import { behavePatternToRegex, parseStepLine } from "./stepMatcher";
 import { STRUCTURAL_KEYWORD_REGEX, STEP_KEYWORD_REGEX } from "./constants";
+import { logger } from "./logger";
 
 /**
  * Scans .feature files in the workspace for steps.
@@ -101,17 +102,22 @@ export class FeatureScanner {
    */
   private async scanAllFiles(): Promise<void> {
     const patterns = this.getPatterns();
+    logger.debug("Scanning for feature files with patterns:", patterns);
 
+    let totalFiles = 0;
     for (const pattern of patterns) {
       const files = await vscode.workspace.findFiles(
         pattern,
         "**/node_modules/**"
       );
+      logger.debug(`Pattern "${pattern}" matched ${files.length} feature files`);
 
       for (const file of files) {
         await this.scanFile(file.fsPath);
+        totalFiles++;
       }
     }
+    logger.debug(`Scanned ${totalFiles} feature files`);
   }
 
   /**
@@ -122,8 +128,11 @@ export class FeatureScanner {
       const content = await fs.promises.readFile(filePath, "utf-8");
       const steps = this.parseFileContent(filePath, content);
       this.steps.set(filePath, steps);
-    } catch {
-      // File might have been deleted or is inaccessible
+      if (steps.length > 0) {
+        logger.debug(`Found ${steps.length} steps in ${filePath}`);
+      }
+    } catch (err) {
+      logger.warn(`Failed to scan feature file ${filePath}:`, err);
       this.steps.delete(filePath);
     }
   }

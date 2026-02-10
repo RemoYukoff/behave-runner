@@ -4,6 +4,7 @@ import { minimatch } from "minimatch";
 import { StepDefinition, StepKeyword } from "./types";
 import { behavePatternToRegex } from "./stepMatcher";
 import { DECORATOR_REGEXES } from "./constants";
+import { logger } from "./logger";
 
 /**
  * Scans Python files in the workspace for Behave step definitions.
@@ -83,17 +84,22 @@ export class StepScanner {
    */
   private async scanAllFiles(): Promise<void> {
     const patterns = this.getPatterns();
+    logger.debug("Scanning for step definitions with patterns:", patterns);
 
+    let totalFiles = 0;
     for (const pattern of patterns) {
       const files = await vscode.workspace.findFiles(
         pattern,
         "**/node_modules/**"
       );
+      logger.debug(`Pattern "${pattern}" matched ${files.length} files`);
 
       for (const file of files) {
         await this.scanFile(file.fsPath);
+        totalFiles++;
       }
     }
+    logger.debug(`Scanned ${totalFiles} Python files`);
   }
 
   /**
@@ -104,8 +110,11 @@ export class StepScanner {
       const content = await fs.promises.readFile(filePath, "utf-8");
       const definitions = this.parseFileContent(filePath, content);
       this.definitions.set(filePath, definitions);
-    } catch {
-      // File might have been deleted or is inaccessible
+      if (definitions.length > 0) {
+        logger.debug(`Found ${definitions.length} step definitions in ${filePath}`);
+      }
+    } catch (err) {
+      logger.warn(`Failed to scan file ${filePath}:`, err);
       this.definitions.delete(filePath);
     }
   }

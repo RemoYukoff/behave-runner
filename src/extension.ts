@@ -10,8 +10,13 @@ import { StepCompletionProvider } from "./stepCompletionProvider";
 import { StepDiagnosticsProvider } from "./stepDiagnosticsProvider";
 import { BehaveCodeLensProvider } from "./codeLensProvider";
 import { RunScenarioArgs, InterpreterInfo } from "./types";
+import { logger } from "./logger";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // Initialize logger first
+  logger.initialize(context);
+  logger.info("Behave Runner extension activating...");
+
   const codeLensProvider = new BehaveCodeLensProvider();
   const languageSelector: vscode.DocumentSelector = [
     { language: "behave", scheme: "file" },
@@ -23,12 +28,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // Initialize the step scanner for Go to Definition
+  logger.debug("Initializing step scanner...");
   const stepScanner = getStepScanner();
   await stepScanner.initialize();
+  logger.info(`Step scanner initialized with ${stepScanner.getAllDefinitions().length} definitions`);
 
   // Initialize the feature scanner for Find References
+  logger.debug("Initializing feature scanner...");
   const featureScanner = getFeatureScanner();
   await featureScanner.initialize();
+  logger.info(`Feature scanner initialized with ${featureScanner.getAllSteps().length} steps`);
 
   // Register the Definition Provider for Go to Definition (Ctrl+Click)
   const definitionProvider = new BehaveDefinitionProvider();
@@ -152,6 +161,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   context.subscriptions.push(runScenarioCommand, debugScenarioCommand);
+
+  logger.info("Behave Runner extension activated successfully");
 }
 
 export function deactivate(): void {

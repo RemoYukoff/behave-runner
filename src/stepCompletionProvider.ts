@@ -4,6 +4,7 @@ import { getStepScanner } from "./stepScanner";
 import { resolveEffectiveKeyword } from "./stepMatcher";
 import { StepDefinition, StepKeyword } from "./types";
 import { STEP_KEYWORD_PARTIAL_REGEX, BEHAVE_PLACEHOLDER_REGEX } from "./constants";
+import { logger } from "./logger";
 
 /**
  * Converts a Behave pattern to a VS Code snippet string.
@@ -179,6 +180,10 @@ export class StepCompletionProvider implements vscode.CompletionItemProvider {
       item.range = range;
 
       items.push(item);
+    }
+
+    if (items.length > 0) {
+      logger.debug(`Providing ${items.length} completion items for "${partialText}"`);
     }
 
     return items;

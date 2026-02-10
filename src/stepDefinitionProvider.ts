@@ -8,6 +8,7 @@ import {
 import { StepKeyword } from "./types";
 import { isInsideDocString } from "./utils";
 import { REGEX_SPECIAL_CHARS } from "./constants";
+import { logger } from "./logger";
 
 /**
  * Cache entry for a line's definition lookup result.
@@ -150,8 +151,11 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
     );
 
     if (matchingDefs.length === 0) {
+      logger.debug(`No matching definition found for step: "${stepInfo.text}"`);
       return { locationLinks: null, originRange };
     }
+
+    logger.debug(`Found ${matchingDefs.length} definition(s) for step: "${stepInfo.text}"`);
 
     // Return LocationLinks for all matches
     const locationLinks: vscode.LocationLink[] = matchingDefs.map((def) => {
