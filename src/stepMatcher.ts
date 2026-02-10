@@ -6,30 +6,10 @@ import {
   EMPTY_OR_COMMENT_REGEX,
   REGEX_SPECIAL_CHARS,
   BEHAVE_PLACEHOLDER_REGEX,
+  BEHAVE_TYPE_FRAGMENTS,
+  DEFAULT_PLACEHOLDER_FRAGMENT,
+  OUTLINE_PLACEHOLDER_FRAGMENT,
 } from "./constants";
-
-/**
- * Behave type placeholders and their regex equivalents
- * See: https://behave.readthedocs.io/en/stable/parse.html
- */
-const BEHAVE_TYPE_PATTERNS: Record<string, string> = {
-  d: "-?\\d+", // integer
-  f: "-?\\d+\\.?\\d*", // float
-  w: "\\w+", // word
-  W: "\\W+", // non-word
-  s: "\\s+", // whitespace
-  S: "\\S+", // non-whitespace
-};
-
-/**
- * Default pattern for untyped placeholders like {name}
- */
-const DEFAULT_PLACEHOLDER_PATTERN = ".+";
-
-/**
- * Pattern to match Scenario Outline placeholders like <name>
- */
-const OUTLINE_PLACEHOLDER_PATTERN = "<[^>]+>";
 
 /**
  * Converts a Behave pattern string to a RegExp.
@@ -61,12 +41,12 @@ export function behavePatternToRegex(pattern: string): RegExp {
   // 2. OR a Scenario Outline placeholder (<name>)
   // Pattern: {name} or {name:type}
   regexStr = regexStr.replace(BEHAVE_PLACEHOLDER_REGEX, (_, _name, type) => {
-    const typePattern = type && BEHAVE_TYPE_PATTERNS[type]
-      ? BEHAVE_TYPE_PATTERNS[type]
-      : DEFAULT_PLACEHOLDER_PATTERN;
+    const typeFragment = type && BEHAVE_TYPE_FRAGMENTS[type]
+      ? BEHAVE_TYPE_FRAGMENTS[type]
+      : DEFAULT_PLACEHOLDER_FRAGMENT;
 
-    // Non-capturing group with alternation: (typePattern|<placeholder>)
-    return `(?:${typePattern}|${OUTLINE_PLACEHOLDER_PATTERN})`;
+    // Non-capturing group with alternation: (typeFragment|<placeholder>)
+    return `(?:${typeFragment}|${OUTLINE_PLACEHOLDER_FRAGMENT})`;
   });
 
   // Handle optional text in Behave patterns: (?:optional)?

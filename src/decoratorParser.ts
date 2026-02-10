@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import {
-  DECORATOR_PATTERNS,
+  DECORATOR_REGEXES,
   FUNCTION_DEF_REGEX,
   EMPTY_OR_COMMENT_REGEX,
   PYTHON_DECORATOR_REGEX,
@@ -34,12 +34,13 @@ export function isFunctionDefinition(lineText: string): boolean {
  * @returns DecoratorInfo if the line contains a step decorator, null otherwise
  */
 export function extractDecoratorInfo(lineText: string): DecoratorInfo | null {
-  for (const regex of DECORATOR_PATTERNS) {
+  // DECORATOR_REGEXES groups: 1=indent, 2=keyword, 3=pattern
+  for (const regex of DECORATOR_REGEXES) {
     const match = lineText.match(regex);
     if (match) {
       return {
-        keyword: match[1].toLowerCase(),
-        pattern: match[2],
+        keyword: match[2].toLowerCase(),
+        pattern: match[3],
       };
     }
   }

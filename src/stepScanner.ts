@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import { StepDefinition, StepKeyword } from "./types";
 import { behavePatternToRegex } from "./stepMatcher";
-import { DECORATOR_REGEXES_WITH_INDENT } from "./constants";
+import { DECORATOR_REGEXES } from "./constants";
 
 /**
  * Scans Python files in the workspace for Behave step definitions.
@@ -122,7 +122,7 @@ export class StepScanner {
 
       // Try all decorator patterns
       let match: { keyword: string; pattern: string; character: number } | null = null;
-      for (const regex of DECORATOR_REGEXES_WITH_INDENT) {
+      for (const regex of DECORATOR_REGEXES) {
         match = this.matchDecorator(line, regex);
         if (match) {
           break;
