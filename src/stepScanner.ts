@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
+import { minimatch } from "minimatch";
 import { StepDefinition, StepKeyword } from "./types";
 import { behavePatternToRegex } from "./stepMatcher";
 import { DECORATOR_REGEXES } from "./constants";
@@ -215,39 +216,13 @@ export class StepScanner {
       return true;
     }
 
-    // Check against configured patterns using simple string matching
+    // Normalize path for cross-platform matching
+    const normalizedPath = filePath.replace(/\\/g, "/");
     const patterns = this.getPatterns();
-    const lowerPath = filePath.toLowerCase().replace(/\\/g, "/");
 
-    for (const pattern of patterns) {
-      // Convert glob pattern to simple checks
-      const lowerPattern = pattern.toLowerCase();
-
-      if (lowerPattern.includes("**/steps/**")) {
-        if (lowerPath.includes("/steps/")) {
-          return true;
-        }
-      } else if (lowerPattern.endsWith("_steps.py")) {
-        if (lowerPath.endsWith("_steps.py")) {
-          return true;
-        }
-      } else if (lowerPattern.includes("step_")) {
-        if (lowerPath.includes("step_") && lowerPath.endsWith(".py")) {
-          return true;
-        }
-      } else if (lowerPattern.endsWith("steps.py")) {
-        if (lowerPath.endsWith("steps.py")) {
-          return true;
-        }
-      } else if (lowerPattern.endsWith(".py")) {
-        // Generic pattern - check if it's a Python file
-        if (lowerPath.endsWith(".py")) {
-          return true;
-        }
-      }
-    }
-
-    return false;
+    return patterns.some((pattern) =>
+      minimatch(normalizedPath, pattern, { nocase: true, matchBase: true })
+    );
   }
 }
 

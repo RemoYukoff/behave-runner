@@ -2,7 +2,7 @@
     "name": "behave-runner",
     "displayName": "Behave Runner",
     "description": "Run, debug, and navigate Behave scenarios with CodeLens, Go to Definition, step autocomplete, and more.",
-    "version": "1.8.0",
+    "version": "1.8.1",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
     "repository": {
@@ -104,5 +104,8 @@
         "@types/vscode": "^1.85.0",
         "typescript": "^5.0.0"
     },
-    "license": "MIT"
+    "license": "MIT",
+    "dependencies": {
+        "minimatch": "^9.0.5"
+    }
 }
