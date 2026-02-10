@@ -1,4 +1,13 @@
+.github/**
+.vscode/**
 example-project/**
 node_modules/**
 out/**/*.map
 src/**
+.gitignore
+.jscpd.json
+esbuild.mjs
+eslint.config.mjs
+knip.json
+tsconfig.json
+*.md

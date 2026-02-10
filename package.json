@@ -2,7 +2,7 @@
     "name": "behave-runner",
     "displayName": "Behave Runner",
     "description": "Run, debug, and navigate Behave scenarios with CodeLens, Go to Definition, step autocomplete, and more.",
-    "version": "1.8.3",
+    "version": "1.9.0",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
     "repository": {
@@ -93,7 +93,12 @@
                 },
                 "behaveRunner.logLevel": {
                     "type": "string",
-                    "enum": ["debug", "info", "warn", "error"],
+                    "enum": [
+                        "debug",
+                        "info",
+                        "warn",
+                        "error"
+                    ],
                     "default": "info",
                     "description": "Log level for the Behave Runner output channel."
                 }
@@ -101,19 +106,22 @@
         }
     },
     "scripts": {
-        "compile": "tsc -p ./",
-        "watch": "tsc -watch -p ./",
-        "vscode:prepublish": "npm run compile",
+        "compile": "node esbuild.mjs",
+        "compile:prod": "node esbuild.mjs --production",
+        "watch": "node esbuild.mjs --watch",
+        "vscode:prepublish": "npm run compile:prod",
+        "typecheck": "tsc -p ./ --noEmit",
         "lint": "eslint src",
         "lint:fix": "eslint src --fix",
         "dead-code": "knip",
         "duplicates": "jscpd src",
-        "analyze": "npm run lint && npm run dead-code && npm run duplicates"
+        "analyze": "npm run typecheck && npm run lint && npm run dead-code && npm run duplicates"
     },
     "devDependencies": {
         "@eslint/js": "^9.39.2",
         "@types/node": "^20.0.0",
         "@types/vscode": "^1.85.0",
+        "esbuild": "^0.27.3",
         "eslint": "^9.39.2",
         "jscpd": "^4.0.8",
         "knip": "^5.83.1",
