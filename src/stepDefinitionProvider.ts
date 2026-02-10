@@ -5,7 +5,8 @@ import {
   parseStepLine,
   resolveEffectiveKeyword,
 } from "./stepMatcher";
-import { isLineInsideDocStringDocument, escapeRegex } from "./utils";
+import { isLineInsideDocStringDocument, escapeRegex, LRUCache, normalizePath } from "./utils";
+import { DEFINITION_LINE_CACHE_MAX_SIZE, DEFINITION_FILE_CACHE_MAX_SIZE } from "./constants";
 
 /**
  * Cache entry for a line's definition lookup result.
@@ -21,8 +22,9 @@ interface LineCacheEntry {
 
 /**
  * Cache for a single file, mapping line numbers to cache entries.
+ * Uses LRU eviction to limit memory usage per file.
  */
-type FileCache = Map<number, LineCacheEntry>;
+type FileCache = LRUCache<number, LineCacheEntry>;
 
 /**
  * Provides "Go to Definition" functionality for Behave steps.
@@ -33,9 +35,11 @@ type FileCache = Map<number, LineCacheEntry>;
 export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
   /**
    * Two-level cache: filePath -> lineNumber -> CacheEntry
-   * This structure allows efficient per-file operations and avoids string concatenation.
+   * Uses LRU eviction at both levels to prevent unbounded memory growth:
+   * - Outer cache limits number of files cached
+   * - Inner cache limits number of lines per file
    */
-  private cache = new Map<string, FileCache>();
+  private cache = new LRUCache<string, FileCache>(DEFINITION_FILE_CACHE_MAX_SIZE);
 
   /**
    * Track the last known scanner version to invalidate cache when Python files change.
@@ -50,8 +54,13 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
   public async provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
-    _token: vscode.CancellationToken
+    token: vscode.CancellationToken
   ): Promise<vscode.LocationLink[] | null> {
+    // Early exit if operation was cancelled
+    if (token.isCancellationRequested) {
+      return null;
+    }
+
     const filePath = document.uri.fsPath;
     const lineNumber = position.line;
     const cached = this.getCachedEntry(filePath, lineNumber);
@@ -76,11 +85,21 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
       }
     }
 
+    // Check cancellation before expensive computation
+    if (token.isCancellationRequested) {
+      return null;
+    }
+
     // Update scanner version tracker
     this.lastScannerVersion = currentScannerVersion;
 
     // Compute the result
     const result = await this.computeDefinition(document, position);
+
+    // Don't cache if cancelled
+    if (token.isCancellationRequested) {
+      return null;
+    }
 
     // Cache the result
     this.setCachedEntry(filePath, lineNumber, {
@@ -99,20 +118,24 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
 
   /**
    * Get a cached entry for a specific file and line.
+   * Normalizes the file path for cross-platform consistency.
    */
   private getCachedEntry(filePath: string, line: number): LineCacheEntry | undefined {
-    const fileCache = this.cache.get(filePath);
+    const normalizedPath = normalizePath(filePath);
+    const fileCache = this.cache.get(normalizedPath);
     return fileCache?.get(line);
   }
 
   /**
    * Set a cached entry for a specific file and line.
+   * Normalizes the file path for cross-platform consistency.
    */
   private setCachedEntry(filePath: string, line: number, entry: LineCacheEntry): void {
-    let fileCache = this.cache.get(filePath);
+    const normalizedPath = normalizePath(filePath);
+    let fileCache = this.cache.get(normalizedPath);
     if (!fileCache) {
-      fileCache = new Map();
-      this.cache.set(filePath, fileCache);
+      fileCache = new LRUCache<number, LineCacheEntry>(DEFINITION_LINE_CACHE_MAX_SIZE);
+      this.cache.set(normalizedPath, fileCache);
     }
     fileCache.set(line, entry);
   }
@@ -239,10 +262,11 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
 
   /**
    * Clear the cache for a specific file. Call this when a document closes.
+   * Normalizes the file path for cross-platform consistency.
    *
    * @param filePath The file path to clear from cache
    */
   public clearCacheForFile(filePath: string): void {
-    this.cache.delete(filePath);
+    this.cache.delete(normalizePath(filePath));
   }
 }
