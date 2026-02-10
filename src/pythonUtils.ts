@@ -49,7 +49,7 @@ export function getPythonInterpreterPath(
 
 /**
  * Resolve an interpreter path, checking if it exists.
- * Falls back to checking common virtual environment locations.
+ * Handles absolute paths, relative paths, and falls back to common venv locations.
  *
  * @param interpreterPath The configured interpreter path
  * @param workspaceRoot Path to the workspace root
@@ -60,11 +60,19 @@ function resolveInterpreterPath(
   workspaceRoot: string
 ): string | null {
   const trimmed = interpreterPath.trim();
+
+  // Check absolute path
   if (path.isAbsolute(trimmed) && fs.existsSync(trimmed)) {
     return trimmed;
   }
 
-  // Check common virtual environment locations with platform-specific paths
+  // Check relative path against workspace root
+  const relativePath = path.join(workspaceRoot, trimmed);
+  if (fs.existsSync(relativePath)) {
+    return relativePath;
+  }
+
+  // Fallback: check common virtual environment locations with platform-specific paths
   const isWindows = process.platform === "win32";
   const venvCandidates = [".venv", "venv"];
   for (const venvFolder of venvCandidates) {

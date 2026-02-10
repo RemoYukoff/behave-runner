@@ -5,16 +5,7 @@ import {
   EMPTY_OR_COMMENT_REGEX,
   PYTHON_DECORATOR_REGEX,
 } from "./constants";
-
-/**
- * Represents a parsed step decorator.
- */
-interface DecoratorInfo {
-  /** The keyword used in the decorator (given, when, then, step) */
-  keyword: string;
-  /** The pattern string from the decorator */
-  pattern: string;
-}
+import { DecoratorInfo } from "./types";
 
 /**
  * Check if a line contains a Python function definition.

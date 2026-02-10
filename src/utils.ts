@@ -6,6 +6,11 @@ import { LineAccessor } from "./types";
 import { REGEX_SPECIAL_CHARS, STEP_KEYWORD_REGEX } from "./constants";
 
 /**
+ * Callback invoked when an entry is evicted from the LRU cache.
+ */
+export type LRUEvictCallback<K, V> = (key: K, value: V) => void;
+
+/**
  * Simple LRU (Least Recently Used) cache implementation.
  * Uses Map's insertion order to track recency.
  *
@@ -15,9 +20,16 @@ import { REGEX_SPECIAL_CHARS, STEP_KEYWORD_REGEX } from "./constants";
 export class LRUCache<K, V> {
   private cache = new Map<K, V>();
   private maxSize: number;
+  private onEvict?: LRUEvictCallback<K, V>;
 
-  constructor(maxSize: number) {
+  /**
+   * Create a new LRU cache.
+   * @param maxSize Maximum number of entries before eviction
+   * @param onEvict Optional callback invoked when entries are evicted
+   */
+  constructor(maxSize: number, onEvict?: LRUEvictCallback<K, V>) {
     this.maxSize = maxSize;
+    this.onEvict = onEvict;
   }
 
   /**
@@ -25,12 +37,13 @@ export class LRUCache<K, V> {
    * Moves the key to most-recently-used position if found.
    */
   get(key: K): V | undefined {
-    const value = this.cache.get(key);
-    if (value !== undefined) {
-      // Move to end (most recently used)
-      this.cache.delete(key);
-      this.cache.set(key, value);
+    if (!this.cache.has(key)) {
+      return undefined;
     }
+    const value = this.cache.get(key) as V;
+    // Move to end (most recently used)
+    this.cache.delete(key);
+    this.cache.set(key, value);
     return value;
   }
 
@@ -47,7 +60,11 @@ export class LRUCache<K, V> {
     while (this.cache.size > this.maxSize) {
       const firstKey = this.cache.keys().next().value;
       if (firstKey !== undefined) {
+        const evictedValue = this.cache.get(firstKey);
         this.cache.delete(firstKey);
+        if (evictedValue !== undefined && this.onEvict) {
+          this.onEvict(firstKey, evictedValue);
+        }
       }
     }
   }
@@ -57,6 +74,14 @@ export class LRUCache<K, V> {
    */
   has(key: K): boolean {
     return this.cache.has(key);
+  }
+
+  /**
+   * Delete a specific key from the cache.
+   * @returns true if the key existed and was deleted, false otherwise
+   */
+  delete(key: K): boolean {
+    return this.cache.delete(key);
   }
 
   /**
@@ -91,21 +116,31 @@ export function escapeRegex(str: string, exceptChars?: string): string {
 }
 
 /**
+ * Return type for debounced functions with cancel capability.
+ */
+export interface DebouncedFunction<T extends (...args: never[]) => void> {
+  /** Call the debounced function */
+  (...args: Parameters<T>): void;
+  /** Cancel any pending invocation */
+  cancel(): void;
+}
+
+/**
  * Creates a debounced version of a function.
  * The function will only be called after the specified delay has passed
  * since the last invocation.
  *
  * @param fn The function to debounce
  * @param delayMs The delay in milliseconds
- * @returns A debounced version of the function
+ * @returns A debounced function with a cancel() method
  */
 export function debounce<T extends (...args: never[]) => void>(
   fn: T,
   delayMs: number
-): (...args: Parameters<T>) => void {
+): DebouncedFunction<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  return (...args: Parameters<T>): void => {
+  const debouncedFn = ((...args: Parameters<T>): void => {
     if (timeoutId !== null) {
       clearTimeout(timeoutId);
     }
@@ -113,7 +148,16 @@ export function debounce<T extends (...args: never[]) => void>(
       fn(...args);
       timeoutId = null;
     }, delayMs);
+  }) as DebouncedFunction<T>;
+
+  debouncedFn.cancel = (): void => {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
   };
+
+  return debouncedFn;
 }
 
 /**
@@ -270,6 +314,17 @@ export function buildKeywordIndex<T, K>(
     }
   }
   return index;
+}
+
+/**
+ * Normalize a file path for cross-platform comparison.
+ * Converts backslashes to forward slashes.
+ *
+ * @param filePath The file path to normalize
+ * @returns Normalized path with forward slashes
+ */
+export function normalizePath(filePath: string): string {
+  return filePath.replace(/\\/g, "/");
 }
 
 /**

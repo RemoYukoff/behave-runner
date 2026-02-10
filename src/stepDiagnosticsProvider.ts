@@ -2,8 +2,19 @@ import * as vscode from "vscode";
 import { getStepScanner } from "./services";
 import { findMatchingDefinitions, parseStepLine } from "./stepMatcher";
 import { StepKeyword } from "./types";
-import { debounce, DocStringTracker, isFeatureDocument, getStepTextStartPosition } from "./utils";
-import { STRUCTURAL_KEYWORD_REGEX, DIAGNOSTICS_DEBOUNCE_MS } from "./constants";
+import { debounce, DebouncedFunction, DocStringTracker, isFeatureDocument, getStepTextStartPosition, LRUCache } from "./utils";
+import { STRUCTURAL_KEYWORD_REGEX, DIAGNOSTICS_DEBOUNCE_MS, DIAGNOSTICS_ABORT_CHECK_INTERVAL } from "./constants";
+
+/**
+ * Maximum number of debounced update functions to cache.
+ * This prevents unbounded memory growth if user opens many feature files.
+ */
+const MAX_DEBOUNCE_CACHE_SIZE = 50;
+
+/**
+ * Type alias for the debounced update function.
+ */
+type DebouncedUpdateFn = DebouncedFunction<(doc: vscode.TextDocument) => void>;
 
 /**
  * Provides diagnostics for undefined steps in .feature files.
@@ -11,11 +22,20 @@ import { STRUCTURAL_KEYWORD_REGEX, DIAGNOSTICS_DEBOUNCE_MS } from "./constants";
 export class StepDiagnosticsProvider implements vscode.Disposable {
   private diagnosticCollection: vscode.DiagnosticCollection;
   private disposables: vscode.Disposable[] = [];
-  /** Debounced update function per document URI to avoid excessive updates during typing */
-  private debouncedUpdates = new Map<string, (doc: vscode.TextDocument) => void>();
+  /** 
+   * Debounced update function per document URI to avoid excessive updates during typing.
+   * Uses LRU cache with eviction callback to cancel pending timers and prevent memory leaks.
+   */
+  private debouncedUpdates: LRUCache<string, DebouncedUpdateFn>;
 
   constructor() {
     this.diagnosticCollection = vscode.languages.createDiagnosticCollection("behave");
+
+    // Initialize LRU cache with eviction callback to cancel pending debounced calls
+    this.debouncedUpdates = new LRUCache<string, DebouncedUpdateFn>(
+      MAX_DEBOUNCE_CACHE_SIZE,
+      (_key, debouncedFn) => debouncedFn.cancel()
+    );
 
     // Update diagnostics when documents change (debounced to avoid lag during typing)
     this.disposables.push(
@@ -49,15 +69,29 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
 
   /**
    * Update diagnostics for a document.
+   * Includes periodic abort checks to exit early if the document changed during processing.
    */
   public updateDiagnostics(document: vscode.TextDocument): void {
     const diagnostics: vscode.Diagnostic[] = [];
     const scanner = getStepScanner();
+    const initialVersion = document.version;
+    const documentUri = document.uri.toString();
 
     let previousKeyword: StepKeyword | null = null;
     const docStringTracker = new DocStringTracker();
 
     for (let lineIndex = 0; lineIndex < document.lineCount; lineIndex++) {
+      // Periodic abort check: exit early if document changed or closed
+      if (lineIndex > 0 && lineIndex % DIAGNOSTICS_ABORT_CHECK_INTERVAL === 0) {
+        const currentDoc = vscode.workspace.textDocuments.find(
+          (d) => d.uri.toString() === documentUri
+        );
+        if (currentDoc?.version !== initialVersion) {
+          // Document changed or closed, abort processing
+          return;
+        }
+      }
+
       const line = document.lineAt(lineIndex);
       const lineText = line.text;
 
@@ -110,7 +144,13 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
       }
     }
 
-    this.diagnosticCollection.set(document.uri, diagnostics);
+    // Final check: only set diagnostics if document is still open and unchanged
+    const finalDoc = vscode.workspace.textDocuments.find(
+      (d) => d.uri.toString() === documentUri
+    );
+    if (finalDoc?.version === initialVersion) {
+      this.diagnosticCollection.set(document.uri, diagnostics);
+    }
   }
 
   /**

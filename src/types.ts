@@ -85,6 +85,16 @@ export interface InterpreterInfo {
 }
 
 /**
+ * Represents a parsed step decorator from a Python file.
+ */
+export interface DecoratorInfo {
+  /** The keyword used in the decorator (given, when, then, step) */
+  keyword: string;
+  /** The pattern string from the decorator */
+  pattern: string;
+}
+
+/**
  * Base interface for file scanners.
  * Provides common lifecycle and scanning operations.
  */
@@ -95,6 +105,19 @@ export interface IScanner {
   rescan(): Promise<void>;
   /** Dispose of resources */
   dispose(): void;
+}
+
+/**
+ * Event handler type for scanner change events.
+ */
+export type ScannerChangeHandler = () => void;
+
+/**
+ * Interface for subscribing to scanner change events.
+ */
+export interface ScannerChangeEvent {
+  /** Subscribe to change events. Returns a dispose function. */
+  (handler: ScannerChangeHandler): { dispose(): void };
 }
 
 /**
@@ -109,6 +132,8 @@ export interface IStepScanner extends IScanner {
   getDefinitionsForFile(filePath: string): StepDefinition[];
   /** Get the current cache version (increments on any change) */
   getVersion(): number;
+  /** Event fired when step definitions change */
+  onDidChange: ScannerChangeEvent;
 }
 
 /**
