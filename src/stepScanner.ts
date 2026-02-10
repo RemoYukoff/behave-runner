@@ -1,4 +1,5 @@
-import { StepDefinition, StepKeyword, IStepScanner } from "./types";
+import * as vscode from "vscode";
+import { StepDefinition, StepKeyword, IStepScanner, ScannerChangeHandler } from "./types";
 import { BaseScanner } from "./baseScanner";
 import { behavePatternToRegex } from "./stepMatcher";
 import {
@@ -18,6 +19,17 @@ export class StepScanner extends BaseScanner<StepDefinition> implements IStepSca
 
   /** Cached index of definitions by keyword for faster lookups */
   private keywordIndex: Map<StepKeyword, StepDefinition[]> | null = null;
+
+  /** Event emitter for notifying subscribers when definitions change */
+  private readonly changeEmitter = new vscode.EventEmitter<void>();
+
+  /**
+   * Event fired when step definitions change.
+   * Subscribe to this instead of creating separate file watchers.
+   */
+  public readonly onDidChange = (handler: ScannerChangeHandler): { dispose(): void } => {
+    return this.changeEmitter.event(handler);
+  };
 
   /**
    * Get all step definitions from the cache.
@@ -112,6 +124,15 @@ export class StepScanner extends BaseScanner<StepDefinition> implements IStepSca
   protected override onItemsChanged(): void {
     this.version++;
     this.keywordIndex = null; // Invalidate keyword index
+    this.changeEmitter.fire(); // Notify subscribers
+  }
+
+  /**
+   * Dispose of resources including the change emitter.
+   */
+  public override dispose(): void {
+    super.dispose();
+    this.changeEmitter.dispose();
   }
 
   protected override invalidateAdditionalCaches(): void {
@@ -166,9 +187,9 @@ export class StepScanner extends BaseScanner<StepDefinition> implements IStepSca
             line: lineIndex,
             character,
           });
-        } catch {
+        } catch (error) {
           // Invalid pattern, skip this definition
-          logger.warn(`Invalid step pattern in ${filePath}:${lineIndex + 1}: ${pattern}`);
+          logger.warn(`Invalid step pattern in ${filePath}:${lineIndex + 1}: ${pattern}`, error);
         }
       }
     }

@@ -5,10 +5,10 @@ import { StepCompletionProvider } from "./stepCompletionProvider";
 import { StepDiagnosticsProvider } from "./stepDiagnosticsProvider";
 import { BehaveCodeLensProvider } from "./codeLensProvider";
 import { runScenarioHandler, debugScenarioHandler } from "./commandHandlers";
-import { initializeServices, disposeServices } from "./services";
+import { initializeServices, disposeServices, getStepScanner } from "./services";
 import { logger } from "./logger";
 import { debounce } from "./utils";
-import { FILE_WATCHER_DEBOUNCE_MS } from "./constants";
+import { DIAGNOSTICS_DEBOUNCE_MS } from "./constants";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // Initialize logger
@@ -62,17 +62,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const diagnosticsProvider = new StepDiagnosticsProvider();
   context.subscriptions.push(diagnosticsProvider);
 
-  // Refresh diagnostics when Python step files change (debounced to avoid excessive updates)
-  const pythonWatcher = vscode.workspace.createFileSystemWatcher("**/*.py");
+  // Refresh diagnostics when step definitions change (uses StepScanner's event instead of duplicate watcher)
   const debouncedRefreshDiagnostics = debounce(
     () => diagnosticsProvider.refreshAll(),
-    FILE_WATCHER_DEBOUNCE_MS
+    DIAGNOSTICS_DEBOUNCE_MS
   );
+  const stepScanner = getStepScanner();
   context.subscriptions.push(
-    pythonWatcher,
-    pythonWatcher.onDidChange(debouncedRefreshDiagnostics),
-    pythonWatcher.onDidCreate(debouncedRefreshDiagnostics),
-    pythonWatcher.onDidDelete(debouncedRefreshDiagnostics)
+    stepScanner.onDidChange(debouncedRefreshDiagnostics),
+    // Cancel pending debounced calls on deactivation
+    { dispose: () => debouncedRefreshDiagnostics.cancel() }
   );
 
   // Clear definition cache for closed documents to prevent memory leaks
