@@ -18,7 +18,7 @@ export class FeatureScanner extends BaseScanner<FeatureStep> implements IFeature
   private regexCache = new LRUCache<string, RegExp>(REGEX_CACHE_MAX_SIZE);
 
   /** Index of steps by effective keyword for O(1) lookup */
-  private keywordIndex: Map<StepKeyword | "null", FeatureStep[]> | null = null;
+  private keywordIndex: Map<StepKeyword, FeatureStep[]> | null = null;
 
   /**
    * Dispose of resources.

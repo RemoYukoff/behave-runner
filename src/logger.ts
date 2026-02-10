@@ -7,8 +7,9 @@ import * as vscode from "vscode";
 
 /**
  * Log levels for categorizing messages.
+ * Exported for external configuration via logger.setMinLevel().
  */
-enum LogLevel {
+export enum LogLevel {
   DEBUG = "DEBUG",
   INFO = "INFO",
   WARN = "WARN",
