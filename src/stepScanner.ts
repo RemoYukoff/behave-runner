@@ -104,7 +104,7 @@ export class StepScanner {
       const content = await fs.promises.readFile(filePath, "utf-8");
       const definitions = this.parseFileContent(filePath, content);
       this.definitions.set(filePath, definitions);
-    } catch (error) {
+    } catch {
       // File might have been deleted or is inaccessible
       this.definitions.delete(filePath);
     }

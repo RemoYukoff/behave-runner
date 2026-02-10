@@ -1,4 +1,4 @@
-import { StepDefinition, StepKeyword } from "./types";
+import { StepDefinition, StepKeyword, StepInfo } from "./types";
 import {
   STEP_KEYWORD_REGEX,
   DIRECT_KEYWORD_REGEX,
@@ -56,20 +56,6 @@ export function behavePatternToRegex(pattern: string): RegExp {
 }
 
 /**
- * Checks if a step text matches a step definition.
- *
- * @param stepText The step text from the .feature file (without keyword)
- * @param definition The step definition to match against
- * @returns true if the step text matches the definition's pattern
- */
-export function matchesStepDefinition(
-  stepText: string,
-  definition: StepDefinition
-): boolean {
-  return definition.regex.test(stepText.trim());
-}
-
-/**
  * Finds all matching step definitions for a given step text.
  * Supports Scenario Outline placeholders like <name> automatically
  * (the regex already accepts them as alternatives).
@@ -109,7 +95,7 @@ export function findMatchingDefinitions(
 export function parseStepLine(
   line: string,
   previousKeyword: StepKeyword | null
-): { keyword: string; text: string; effectiveKeyword: StepKeyword | null } | null {
+): StepInfo | null {
   const stepMatch = line.match(STEP_KEYWORD_REGEX);
 
   if (!stepMatch) {

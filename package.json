@@ -2,7 +2,7 @@
     "name": "behave-runner",
     "displayName": "Behave Runner",
     "description": "Run, debug, and navigate Behave scenarios with CodeLens, Go to Definition, step autocomplete, and more.",
-    "version": "1.8.1",
+    "version": "1.8.2",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
     "repository": {
@@ -97,12 +97,22 @@
     "scripts": {
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
-        "vscode:prepublish": "npm run compile"
+        "vscode:prepublish": "npm run compile",
+        "lint": "eslint src",
+        "lint:fix": "eslint src --fix",
+        "dead-code": "knip",
+        "duplicates": "jscpd src",
+        "analyze": "npm run lint && npm run dead-code && npm run duplicates"
     },
     "devDependencies": {
+        "@eslint/js": "^9.39.2",
         "@types/node": "^20.0.0",
         "@types/vscode": "^1.85.0",
-        "typescript": "^5.0.0"
+        "eslint": "^9.39.2",
+        "jscpd": "^4.0.8",
+        "knip": "^5.83.1",
+        "typescript": "^5.0.0",
+        "typescript-eslint": "^8.55.0"
     },
     "license": "MIT",
     "dependencies": {

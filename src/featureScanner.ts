@@ -122,7 +122,7 @@ export class FeatureScanner {
       const content = await fs.promises.readFile(filePath, "utf-8");
       const steps = this.parseFileContent(filePath, content);
       this.steps.set(filePath, steps);
-    } catch (error) {
+    } catch {
       // File might have been deleted or is inaccessible
       this.steps.delete(filePath);
     }

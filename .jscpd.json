@@ -1,0 +1,9 @@
+{
+  "threshold": 5,
+  "reporters": ["console"],
+  "ignore": ["node_modules/**", "out/**"],
+  "absolute": false,
+  "minLines": 10,
+  "minTokens": 70,
+  "format": ["typescript"]
+}
