@@ -11,6 +11,12 @@
 export const SCAN_BATCH_SIZE = 10;
 
 /**
+ * Maximum number of rescan retries for a single file.
+ * Prevents infinite recursion if a file is modified continuously.
+ */
+export const MAX_RESCAN_RETRIES = 3;
+
+/**
  * Debounce delay in milliseconds for file watcher events.
  */
 export const FILE_WATCHER_DEBOUNCE_MS = 300;
@@ -21,6 +27,12 @@ export const FILE_WATCHER_DEBOUNCE_MS = 300;
 export const DIAGNOSTICS_DEBOUNCE_MS = 300;
 
 /**
+ * Number of lines between abort checks in diagnostics updates.
+ * Allows early exit if the document changed during processing.
+ */
+export const DIAGNOSTICS_ABORT_CHECK_INTERVAL = 50;
+
+/**
  * Padding length for sortText in completion items (supports up to 99999 items).
  */
 export const SORT_TEXT_PAD_LENGTH = 5;
@@ -29,6 +41,18 @@ export const SORT_TEXT_PAD_LENGTH = 5;
  * Maximum number of entries in the regex cache (LRU eviction).
  */
 export const REGEX_CACHE_MAX_SIZE = 500;
+
+/**
+ * Maximum number of cached line entries per file in BehaveDefinitionProvider.
+ * Limits memory usage when navigating large feature files.
+ */
+export const DEFINITION_LINE_CACHE_MAX_SIZE = 100;
+
+/**
+ * Maximum number of files to cache in BehaveDefinitionProvider.
+ * Prevents unbounded memory growth when navigating many feature files.
+ */
+export const DEFINITION_FILE_CACHE_MAX_SIZE = 50;
 
 // ==================== Decorator Regex Patterns ====================
 
@@ -117,13 +141,23 @@ export const PYTHON_DECORATOR_REGEX = /^\s*@\w+/;
 export const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
 
 /**
- * Regex to match Behave placeholder syntax: {name} or {name:type}.
+ * Regex pattern for Behave placeholder syntax: {name} or {name:type}.
  * Groups: 1=name, 2=type (optional)
  * 
- * IMPORTANT: Reset lastIndex to 0 before each use to avoid stateful behavior
- * with the global flag.
+ * Note: This is a non-global regex for single matches. For replace operations,
+ * use createPlaceholderRegex() which creates a fresh global regex.
  */
-export const BEHAVE_PLACEHOLDER_REGEX_GLOBAL = /\{(\w+)(?::(\w))?\}/g;
+export const BEHAVE_PLACEHOLDER_REGEX = /\{(\w+)(?::(\w))?\}/;
+
+/**
+ * Creates a fresh global regex for Behave placeholder matching.
+ * Use this instead of a shared global regex to avoid lastIndex state issues.
+ * 
+ * @returns A new global RegExp for matching {name} or {name:type} placeholders
+ */
+export function createPlaceholderRegex(): RegExp {
+  return /\{(\w+)(?::(\w))?\}/g;
+}
 
 // ==================== Behave Pattern Constants ====================
 

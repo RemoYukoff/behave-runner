@@ -8,8 +8,8 @@ import * as fs from "fs";
 import { minimatch } from "minimatch";
 import { IScanner } from "./types";
 import { logger } from "./logger";
-import { SCAN_BATCH_SIZE } from "./constants";
-import { arraysEqual } from "./utils";
+import { SCAN_BATCH_SIZE, MAX_RESCAN_RETRIES } from "./constants";
+import { arraysEqual, normalizePath } from "./utils";
 
 /**
  * Abstract base class for file scanners.
@@ -84,6 +84,9 @@ export abstract class BaseScanner<TItem> implements IScanner {
    * Force a rescan of all files.
    * Protected against concurrent rescans - if called while a rescan is in progress,
    * it will schedule another rescan to run after the current one completes.
+   * 
+   * Uses a do-while loop instead of recursion to avoid stack overflow and
+   * race conditions between setting isRescanning=false and checking rescanPending.
    */
   public async rescan(): Promise<void> {
     // If already rescanning, mark that another rescan is needed
@@ -92,22 +95,20 @@ export abstract class BaseScanner<TItem> implements IScanner {
       return;
     }
 
-    this.isRescanning = true;
-    try {
-      this.items.clear();
-      this.flatCache = null;
-      this.pendingRescan.clear();
-      this.invalidateAdditionalCaches();
-      await this.scanAllFiles();
-    } finally {
-      this.isRescanning = false;
-
-      // If another rescan was requested while we were scanning, run it now
-      if (this.rescanPending) {
-        this.rescanPending = false;
-        await this.rescan();
+    // Process rescans in a loop to handle pending requests without recursion
+    do {
+      this.isRescanning = true;
+      this.rescanPending = false; // Reset BEFORE scanning to catch new requests
+      try {
+        this.items.clear();
+        this.flatCache = null;
+        this.pendingRescan.clear();
+        this.invalidateAdditionalCaches();
+        await this.scanAllFiles();
+      } finally {
+        this.isRescanning = false;
       }
-    }
+    } while (this.rescanPending);
   }
 
   /**
@@ -229,8 +230,11 @@ export abstract class BaseScanner<TItem> implements IScanner {
    * Scan a single file for items.
    * Protected against concurrent scans of the same file.
    * If the file changes during a scan, it will be re-scanned after completion.
+   *
+   * @param filePath The file path to scan
+   * @param retryCount Current retry count (internal use for recursion limit)
    */
-  protected async scanFile(filePath: string): Promise<void> {
+  protected async scanFile(filePath: string, retryCount = 0): Promise<void> {
     // If already scanning this file, mark it for re-scan when done
     if (this.scanning.has(filePath)) {
       this.pendingRescan.add(filePath);
@@ -250,7 +254,9 @@ export abstract class BaseScanner<TItem> implements IScanner {
         this.onItemsChanged();
       }
     } catch (error) {
-      logger.debug(`Failed to scan ${this.getFileTypeName()}: ${filePath}`, error);
+      // Use warn level to make scan failures visible for debugging
+      // Common causes: file deleted during scan, permission issues, encoding errors
+      logger.warn(`Failed to scan ${this.getFileTypeName()}: ${filePath}`, error);
       if (this.items.delete(filePath)) {
         this.flatCache = null;
         this.onItemsChanged();
@@ -258,10 +264,16 @@ export abstract class BaseScanner<TItem> implements IScanner {
     } finally {
       this.scanning.delete(filePath);
 
-      // If this file was modified during scanning, re-scan it now
+      // If this file was modified during scanning, re-scan it now (with retry limit)
       if (this.pendingRescan.has(filePath)) {
         this.pendingRescan.delete(filePath);
-        await this.scanFile(filePath);
+        if (retryCount < MAX_RESCAN_RETRIES) {
+          await this.scanFile(filePath, retryCount + 1);
+        } else {
+          logger.warn(
+            `Max rescan retries (${MAX_RESCAN_RETRIES}) reached for ${this.getFileTypeName()}: ${filePath}`
+          );
+        }
       }
     }
   }
@@ -321,8 +333,7 @@ export abstract class BaseScanner<TItem> implements IScanner {
    * This ensures pattern changes are respected on file updates.
    */
   protected matchesPatterns(filePath: string): boolean {
-    // Normalize path for cross-platform matching
-    const normalizedPath = filePath.replace(/\\/g, "/");
+    const normalizedPath = normalizePath(filePath);
     const patterns = this.getPatterns();
 
     return patterns.some((pattern) =>
