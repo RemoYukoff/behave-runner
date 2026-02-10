@@ -21,11 +21,24 @@ export class BehaveCodeLensProvider implements vscode.CodeLensProvider, vscode.D
   /**
    * Provide CodeLens for a document.
    */
-  public provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
+  public provideCodeLenses(
+    document: vscode.TextDocument,
+    token: vscode.CancellationToken
+  ): vscode.CodeLens[] {
+    // Early exit if operation was cancelled
+    if (token.isCancellationRequested) {
+      return [];
+    }
+
     const lenses: vscode.CodeLens[] = [];
     const workspaceRoot = this.getWorkspaceRoot(document);
 
     for (let i = 0; i < document.lineCount; i += 1) {
+      // Check for cancellation periodically (every 100 lines)
+      if (i > 0 && i % 100 === 0 && token.isCancellationRequested) {
+        return lenses;
+      }
+
       const line = document.lineAt(i);
       const featureMatch = line.text.match(FEATURE_LINE_REGEX);
       if (featureMatch) {

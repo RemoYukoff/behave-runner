@@ -20,8 +20,11 @@ export class BehaveStepLocationProvider
   public async provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
-    _token: vscode.CancellationToken
+    token: vscode.CancellationToken
   ): Promise<vscode.Location[] | null> {
+    if (token.isCancellationRequested) {
+      return null;
+    }
     return this.findStepUsageLocations(document, position);
   }
 
@@ -33,8 +36,11 @@ export class BehaveStepLocationProvider
     document: vscode.TextDocument,
     position: vscode.Position,
     _context: vscode.ReferenceContext,
-    _token: vscode.CancellationToken
+    token: vscode.CancellationToken
   ): Promise<vscode.Location[] | null> {
+    if (token.isCancellationRequested) {
+      return null;
+    }
     return this.findStepUsageLocations(document, position);
   }
 
