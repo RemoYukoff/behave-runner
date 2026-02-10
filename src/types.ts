@@ -1,4 +1,13 @@
 /**
+ * Interface for document-like objects that provide line access.
+ * Compatible with vscode.TextDocument.
+ */
+export interface LineAccessor {
+  lineAt(line: number): { text: string };
+  lineCount: number;
+}
+
+/**
  * Supported Behave step keywords as a const object.
  * Use these constants instead of string literals for type safety.
  */
@@ -31,18 +40,6 @@ export interface StepDefinition {
   line: number;
   /** Character position where the decorator starts (0-based) */
   character: number;
-}
-
-/**
- * Represents a step extracted from a .feature file
- */
-export interface StepInfo {
-  /** The keyword used in the feature file (Given, When, Then, And, But, *) */
-  keyword: string;
-  /** The step text without the keyword */
-  text: string;
-  /** The effective keyword after resolving And/But */
-  effectiveKeyword: StepKeyword | null;
 }
 
 /**
@@ -106,6 +103,8 @@ export interface IScanner {
 export interface IStepScanner extends IScanner {
   /** Get all step definitions from the cache */
   getAllDefinitions(): StepDefinition[];
+  /** Get step definitions filtered by keyword (uses index for O(1) lookup) */
+  getDefinitionsByKeyword(keyword: StepKeyword | null): StepDefinition[];
   /** Get step definitions from a specific file */
   getDefinitionsForFile(filePath: string): StepDefinition[];
   /** Get the current cache version (increments on any change) */

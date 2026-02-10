@@ -1,35 +1,15 @@
-import { StepDefinition, StepKeyword } from "./types";
+import { StepDefinition, StepKeyword, LineAccessor } from "./types";
 import {
   STEP_KEYWORD_REGEX,
   DIRECT_KEYWORD_REGEX,
   CONTINUATION_KEYWORD_REGEX,
   EMPTY_OR_COMMENT_REGEX,
-  REGEX_SPECIAL_CHARS,
-  BEHAVE_PLACEHOLDER_REGEX,
+  BEHAVE_PLACEHOLDER_REGEX_GLOBAL,
+  BEHAVE_TYPE_PATTERNS,
+  DEFAULT_PLACEHOLDER_PATTERN,
+  OUTLINE_PLACEHOLDER_PATTERN,
 } from "./constants";
-
-/**
- * Behave type placeholders and their regex equivalents
- * See: https://behave.readthedocs.io/en/stable/parse.html
- */
-const BEHAVE_TYPE_PATTERNS: Record<string, string> = {
-  d: "-?\\d+", // integer
-  f: "-?\\d+\\.?\\d*", // float
-  w: "\\w+", // word
-  W: "\\W+", // non-word
-  s: "\\s+", // whitespace
-  S: "\\S+", // non-whitespace
-};
-
-/**
- * Default pattern for untyped placeholders like {name}
- */
-const DEFAULT_PLACEHOLDER_PATTERN = ".+";
-
-/**
- * Pattern to match Scenario Outline placeholders like <name>
- */
-const OUTLINE_PLACEHOLDER_PATTERN = "<[^>]+>";
+import { escapeRegex } from "./utils";
 
 /**
  * Converts a Behave pattern string to a RegExp.
@@ -47,20 +27,16 @@ const OUTLINE_PLACEHOLDER_PATTERN = "<[^>]+>";
  * @returns A RegExp that matches step text (including Scenario Outline placeholders)
  */
 export function behavePatternToRegex(pattern: string): RegExp {
-  // Escape regex special characters except for our placeholders
-  let regexStr = pattern.replace(REGEX_SPECIAL_CHARS, (char) => {
-    // Don't escape curly braces yet, we'll handle them specially
-    if (char === "{" || char === "}") {
-      return char;
-    }
-    return "\\" + char;
-  });
+  // Escape regex special characters except for curly braces (our placeholders)
+  let regexStr = escapeRegex(pattern, "{}");
 
   // Replace Behave placeholders with regex groups that accept:
   // 1. The expected value type (e.g., \d+ for integers)
   // 2. OR a Scenario Outline placeholder (<name>)
   // Pattern: {name} or {name:type}
-  regexStr = regexStr.replace(BEHAVE_PLACEHOLDER_REGEX, (_, _name, type) => {
+  // Reset lastIndex before use since we're reusing the global regex
+  BEHAVE_PLACEHOLDER_REGEX_GLOBAL.lastIndex = 0;
+  regexStr = regexStr.replace(BEHAVE_PLACEHOLDER_REGEX_GLOBAL, (_, _name, type) => {
     const typePattern = type && BEHAVE_TYPE_PATTERNS[type]
       ? BEHAVE_TYPE_PATTERNS[type]
       : DEFAULT_PLACEHOLDER_PATTERN;
@@ -76,47 +52,23 @@ export function behavePatternToRegex(pattern: string): RegExp {
 }
 
 /**
- * Checks if a step text matches a step definition.
- *
- * @param stepText The step text from the .feature file (without keyword)
- * @param definition The step definition to match against
- * @returns true if the step text matches the definition's pattern
- */
-export function matchesStepDefinition(
-  stepText: string,
-  definition: StepDefinition
-): boolean {
-  return definition.regex.test(stepText.trim());
-}
-
-/**
  * Finds all matching step definitions for a given step text.
  * Supports Scenario Outline placeholders like <name> automatically
  * (the regex already accepts them as alternatives).
  *
  * @param stepText The step text from the .feature file (without keyword)
- * @param keyword The effective keyword (given, when, then) or null for any
- * @param definitions All available step definitions
+ * @param definitions Pre-filtered step definitions (already filtered by keyword for efficiency)
  * @returns Array of matching step definitions
  */
 export function findMatchingDefinitions(
   stepText: string,
-  keyword: StepKeyword | null,
   definitions: StepDefinition[]
 ): StepDefinition[] {
   const trimmedText = stepText.trim();
 
-  return definitions.filter((def) => {
-    // Filter by keyword first (fast operation)
-    // @step decorator matches any keyword
-    if (keyword && def.keyword !== "step" && def.keyword !== keyword) {
-      return false;
-    }
-
-    // Single regex match - works for both normal steps and Scenario Outline
-    // because the regex accepts <placeholder> as an alternative to typed values
-    return def.regex.test(trimmedText);
-  });
+  // Definitions should already be pre-filtered by keyword via getDefinitionsByKeyword
+  // We only need to test the regex match
+  return definitions.filter((def) => def.regex.test(trimmedText));
 }
 
 /**
@@ -166,16 +118,20 @@ export function parseStepLine(
  * Determines the effective keyword for a step at a given line,
  * by scanning backwards through the document to find the parent keyword.
  *
- * @param lines Array of document lines
+ * @param document A document-like object with lineAt() method
  * @param targetLine The line number of the step (0-based)
  * @returns The effective keyword or null
  */
 export function resolveEffectiveKeyword(
-  lines: string[],
+  document: LineAccessor,
   targetLine: number
 ): StepKeyword | null {
+  if (targetLine < 0 || targetLine >= document.lineCount) {
+    return null;
+  }
+
   // First check if the current line has a direct keyword (Given/When/Then)
-  const currentLine = lines[targetLine];
+  const currentLine = document.lineAt(targetLine).text;
   const directMatch = currentLine.match(DIRECT_KEYWORD_REGEX);
   if (directMatch) {
     return directMatch[1].toLowerCase() as StepKeyword;
@@ -190,7 +146,7 @@ export function resolveEffectiveKeyword(
 
   // Search backwards from the previous line
   for (let i = targetLine - 1; i >= 0; i--) {
-    const line = lines[i];
+    const line = document.lineAt(i).text;
     
     // Found a direct keyword - this is the parent
     const parentMatch = line.match(DIRECT_KEYWORD_REGEX);

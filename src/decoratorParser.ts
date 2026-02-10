@@ -1,17 +1,15 @@
 import * as vscode from "vscode";
 import {
-  DECORATOR_PATTERNS,
+  DECORATOR_REGEXES_WITH_INDENT,
   FUNCTION_DEF_REGEX,
   EMPTY_OR_COMMENT_REGEX,
   PYTHON_DECORATOR_REGEX,
 } from "./constants";
-import { getFeatureScanner } from "./services";
-import { StepKeyword } from "./types";
 
 /**
  * Represents a parsed step decorator.
  */
-export interface DecoratorInfo {
+interface DecoratorInfo {
   /** The keyword used in the decorator (given, when, then, step) */
   keyword: string;
   /** The pattern string from the decorator */
@@ -35,13 +33,14 @@ export function isFunctionDefinition(lineText: string): boolean {
  * @param lineText The line text to parse
  * @returns DecoratorInfo if the line contains a step decorator, null otherwise
  */
-export function extractDecoratorInfo(lineText: string): DecoratorInfo | null {
-  for (const regex of DECORATOR_PATTERNS) {
+function extractDecoratorInfo(lineText: string): DecoratorInfo | null {
+  // DECORATOR_REGEXES_WITH_INDENT groups: 1=indent, 2=keyword, 3=pattern
+  for (const regex of DECORATOR_REGEXES_WITH_INDENT) {
     const match = lineText.match(regex);
     if (match) {
       return {
-        keyword: match[1].toLowerCase(),
-        pattern: match[2],
+        keyword: match[2].toLowerCase(),
+        pattern: match[3],
       };
     }
   }
@@ -92,57 +91,3 @@ export function findDecoratorsAbove(
   return decorators;
 }
 
-/**
- * Find all feature file locations where a step function is used.
- * This is shared logic used by both ReferenceProvider and DefinitionProvider.
- *
- * @param document The VS Code text document (Python file)
- * @param position The cursor position
- * @returns Array of Location objects pointing to .feature files, or null if not on a step function
- */
-export function findStepUsageLocations(
-  document: vscode.TextDocument,
-  position: vscode.Position
-): vscode.Location[] | null {
-  const line = document.lineAt(position.line);
-
-  // Check if cursor is on a function definition
-  if (!isFunctionDefinition(line.text)) {
-    return null;
-  }
-
-  // Look backwards to find step decorators above the function
-  const decorators = findDecoratorsAbove(document, position.line);
-
-  if (decorators.length === 0) {
-    return null;
-  }
-
-  const featureScanner = getFeatureScanner();
-  const locations: vscode.Location[] = [];
-
-  // Find matching steps for each decorator pattern
-  for (const { keyword, pattern } of decorators) {
-    const matchingSteps = featureScanner.findMatchingSteps(
-      pattern,
-      keyword as StepKeyword
-    );
-
-    for (const step of matchingSteps) {
-      const uri = vscode.Uri.file(step.filePath);
-      const range = new vscode.Range(
-        step.line,
-        step.character,
-        step.line,
-        step.character + step.text.length
-      );
-      locations.push(new vscode.Location(uri, range));
-    }
-  }
-
-  if (locations.length === 0) {
-    return null;
-  }
-
-  return locations;
-}

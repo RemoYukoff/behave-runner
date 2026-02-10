@@ -1,64 +1,66 @@
-import * as vscode from "vscode";
-import * as fs from "fs";
 import { StepDefinition, StepKeyword, IStepScanner } from "./types";
+import { BaseScanner } from "./baseScanner";
 import { behavePatternToRegex } from "./stepMatcher";
 import {
   DECORATOR_REGEXES_WITH_INDENT,
   DEFAULT_STEP_DEFINITION_PATTERNS,
 } from "./constants";
 import { logger } from "./logger";
+import { buildKeywordIndex, arraysEqual } from "./utils";
 
 /**
  * Scans Python files in the workspace for Behave step definitions.
  * Provides caching and file watching for performance.
  */
-export class StepScanner implements IStepScanner {
-  private definitions: Map<string, StepDefinition[]> = new Map();
-  private fileWatcher: vscode.FileSystemWatcher | null = null;
-  private initialized = false;
+export class StepScanner extends BaseScanner<StepDefinition> implements IStepScanner {
+  /** Version number that increments on any change (for cache invalidation) */
   private version = 0;
 
-  /**
-   * Initialize the scanner and start watching for file changes.
-   */
-  public async initialize(): Promise<void> {
-    if (this.initialized) {
-      return;
-    }
-
-    await this.scanAllFiles();
-    this.setupFileWatcher();
-    this.initialized = true;
-  }
-
-  /**
-   * Dispose of resources.
-   */
-  public dispose(): void {
-    if (this.fileWatcher) {
-      this.fileWatcher.dispose();
-      this.fileWatcher = null;
-    }
-    this.definitions.clear();
-    this.initialized = false;
-  }
+  /** Cached index of definitions by keyword for faster lookups */
+  private keywordIndex: Map<StepKeyword, StepDefinition[]> | null = null;
 
   /**
    * Get all step definitions from the cache.
+   * Results are cached and invalidated when definitions change.
    */
   public getAllDefinitions(): StepDefinition[] {
-    const allDefs: StepDefinition[] = [];
-    for (const defs of this.definitions.values()) {
-      allDefs.push(...defs);
+    return this.getAllItems();
+  }
+
+  /**
+   * Get step definitions filtered by keyword.
+   * Uses pre-built index for O(1) lookup instead of O(n) filtering.
+   *
+   * @param keyword The keyword to filter by, or null for all definitions
+   * @returns Definitions matching the keyword (including "step" which matches all)
+   */
+  public getDefinitionsByKeyword(keyword: StepKeyword | null): StepDefinition[] {
+    if (!keyword) {
+      return this.getAllDefinitions();
     }
-    return allDefs;
+
+    this.ensureKeywordIndex();
+
+    // Get definitions for the specific keyword
+    const specificDefs = this.keywordIndex!.get(keyword) ?? [];
+    // Get "step" definitions which match any keyword
+    const stepDefs = this.keywordIndex!.get("step") ?? [];
+
+    // Combine and return (step definitions are included for all keywords)
+    if (stepDefs.length === 0) {
+      return specificDefs;
+    }
+    if (specificDefs.length === 0) {
+      return stepDefs;
+    }
+    return [...specificDefs, ...stepDefs];
   }
 
   /**
    * Get step definitions from a specific file.
    */
   public getDefinitionsForFile(filePath: string): StepDefinition[] {
-    return this.definitions.get(filePath) || [];
+    return this.items.get(filePath) ?? [];
   }
 
   /**
@@ -71,64 +73,71 @@ export class StepScanner implements IStepScanner {
 
   /**
    * Force a rescan of all files.
+   * Note: version is incremented via onItemsChanged() during super.rescan(),
+   * so we don't need to increment it again here.
    */
-  public async rescan(): Promise<void> {
-    this.definitions.clear();
-    await this.scanAllFiles();
-    this.version++;
+  public override async rescan(): Promise<void> {
+    await super.rescan();
+    // version is already incremented by onItemsChanged() calls during scan
   }
 
   /**
-   * Get step definition patterns from configuration.
+   * Ensure the keyword index is built.
    */
-  private getPatterns(): string[] {
-    const config = vscode.workspace.getConfiguration("behaveRunner");
-    return config.get<string[]>(
-      "stepDefinitions.patterns",
-      [...DEFAULT_STEP_DEFINITION_PATTERNS]
+  private ensureKeywordIndex(): void {
+    this.keywordIndex ??= buildKeywordIndex(
+      this.getAllDefinitions(),
+      (def) => def.keyword
     );
   }
 
-  /**
-   * Scan all Python files in the workspace that might contain step definitions.
-   */
-  private async scanAllFiles(): Promise<void> {
-    const patterns = this.getPatterns();
+  // ==================== BaseScanner Implementation ====================
 
-    for (const pattern of patterns) {
-      const files = await vscode.workspace.findFiles(
-        pattern,
-        "**/node_modules/**"
-      );
+  protected getWatcherPattern(): string {
+    return "**/*.py";
+  }
 
-      for (const file of files) {
-        await this.scanFile(file.fsPath);
-      }
-    }
+  protected getConfigKey(): string {
+    return "stepDefinitions.patterns";
+  }
+
+  protected getDefaultPatterns(): readonly string[] {
+    return DEFAULT_STEP_DEFINITION_PATTERNS;
+  }
+
+  protected getFileTypeName(): string {
+    return "step file";
+  }
+
+  protected override onItemsChanged(): void {
+    this.version++;
+    this.keywordIndex = null; // Invalidate keyword index
+  }
+
+  protected override invalidateAdditionalCaches(): void {
+    this.keywordIndex = null;
   }
 
   /**
-   * Scan a single Python file for step definitions.
+   * Compare step definitions for equality without using JSON.stringify.
+   * Skips regex comparison since it's derived from pattern.
    */
-  private async scanFile(filePath: string): Promise<void> {
-    try {
-      const content = await fs.promises.readFile(filePath, "utf-8");
-      const definitions = this.parseFileContent(filePath, content);
-      this.definitions.set(filePath, definitions);
-      this.version++;
-    } catch (error) {
-      // File might have been deleted or is inaccessible
-      logger.debug(`Failed to scan step file: ${filePath}`, error);
-      if (this.definitions.delete(filePath)) {
-        this.version++;
-      }
-    }
+  protected override areItemsEqual(
+    oldItems: StepDefinition[] | undefined,
+    newItems: StepDefinition[]
+  ): boolean {
+    return arraysEqual(oldItems, newItems, (a, b) =>
+      a.keyword === b.keyword &&
+      a.pattern === b.pattern &&
+      a.line === b.line &&
+      a.character === b.character
+    );
   }
 
   /**
    * Parse the content of a Python file to extract step definitions.
    */
-  private parseFileContent(filePath: string, content: string): StepDefinition[] {
+  protected parseFileContent(filePath: string, content: string): StepDefinition[] {
     const definitions: StepDefinition[] = [];
     const lines = content.split("\n");
 
@@ -190,80 +199,4 @@ export class StepScanner implements IStepScanner {
       character: indent.length,
     };
   }
-
-  /**
-   * Set up file system watcher to keep cache in sync.
-   */
-  private setupFileWatcher(): void {
-    // Watch for Python files in steps directories
-    this.fileWatcher = vscode.workspace.createFileSystemWatcher(
-      "**/*.py",
-      false,
-      false,
-      false
-    );
-
-    this.fileWatcher.onDidCreate(async (uri) => {
-      if (this.isStepFile(uri.fsPath)) {
-        await this.scanFile(uri.fsPath);
-      }
-    });
-
-    this.fileWatcher.onDidChange(async (uri) => {
-      if (this.isStepFile(uri.fsPath)) {
-        await this.scanFile(uri.fsPath);
-      }
-    });
-
-    this.fileWatcher.onDidDelete((uri) => {
-      if (this.definitions.delete(uri.fsPath)) {
-        this.version++;
-      }
-    });
-  }
-
-  /**
-   * Check if a file path matches the configured step definition patterns.
-   */
-  private isStepFile(filePath: string): boolean {
-    // If file was already scanned, it's a step file
-    if (this.definitions.has(filePath)) {
-      return true;
-    }
-
-    // Check against configured patterns using simple string matching
-    const patterns = this.getPatterns();
-    const lowerPath = filePath.toLowerCase().replace(/\\/g, "/");
-
-    for (const pattern of patterns) {
-      // Convert glob pattern to simple checks
-      const lowerPattern = pattern.toLowerCase();
-
-      if (lowerPattern.includes("**/steps/**")) {
-        if (lowerPath.includes("/steps/")) {
-          return true;
-        }
-      } else if (lowerPattern.endsWith("_steps.py")) {
-        if (lowerPath.endsWith("_steps.py")) {
-          return true;
-        }
-      } else if (lowerPattern.includes("step_")) {
-        if (lowerPath.includes("step_") && lowerPath.endsWith(".py")) {
-          return true;
-        }
-      } else if (lowerPattern.endsWith("steps.py")) {
-        if (lowerPath.endsWith("steps.py")) {
-          return true;
-        }
-      } else if (lowerPattern.endsWith(".py")) {
-        // Generic pattern - check if it's a Python file
-        if (lowerPath.endsWith(".py")) {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  }
 }
-

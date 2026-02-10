@@ -3,7 +3,25 @@ import * as path from "path";
 import { getStepScanner } from "./services";
 import { resolveEffectiveKeyword } from "./stepMatcher";
 import { StepDefinition, StepKeyword } from "./types";
-import { STEP_KEYWORD_PARTIAL_REGEX, BEHAVE_PLACEHOLDER_REGEX } from "./constants";
+import { STEP_KEYWORD_PARTIAL_REGEX, BEHAVE_PLACEHOLDER_REGEX_GLOBAL, SORT_TEXT_PAD_LENGTH } from "./constants";
+
+/**
+ * Clone a CompletionItem with a new range and optional sortText.
+ * Avoids creating full copies for each property when only range/sortText changes.
+ */
+function cloneCompletionItemWithRange(
+  item: vscode.CompletionItem,
+  range: vscode.Range,
+  sortText?: string
+): vscode.CompletionItem {
+  const newItem = new vscode.CompletionItem(item.label, item.kind);
+  newItem.insertText = item.insertText;
+  newItem.detail = item.detail;
+  newItem.documentation = item.documentation;
+  newItem.sortText = sortText ?? item.sortText;
+  newItem.range = range;
+  return newItem;
+}
 
 /**
  * Converts a Behave pattern to a VS Code snippet string.
@@ -19,8 +37,11 @@ import { STEP_KEYWORD_PARTIAL_REGEX, BEHAVE_PLACEHOLDER_REGEX } from "./constant
 function behavePatternToSnippet(pattern: string): string {
   let snippetIndex = 1;
 
+  // Reset lastIndex before use since we're reusing the global regex
+  BEHAVE_PLACEHOLDER_REGEX_GLOBAL.lastIndex = 0;
+
   // Replace Behave placeholders {name} or {name:type} with VS Code snippet placeholders
-  return pattern.replace(BEHAVE_PLACEHOLDER_REGEX, (_, name) => {
+  return pattern.replace(BEHAVE_PLACEHOLDER_REGEX_GLOBAL, (_, name) => {
     return `\${${snippetIndex++}:${name}}`;
   });
 }
@@ -41,7 +62,7 @@ function parseCurrentLine(
 
   const fullMatch = match[0];
   const keyword = match[1];
-  const partialText = match[2] || "";
+  const partialText = match[2] ?? "";
   // Calculate where the keyword ends (including the space after it)
   const keywordEnd = fullMatch.length - partialText.length;
 
@@ -49,30 +70,23 @@ function parseCurrentLine(
 }
 
 /**
- * Filters step definitions based on keyword compatibility.
- *
- * @param definitions All step definitions
- * @param effectiveKeyword The effective keyword (given, when, then) or null
- * @returns Filtered definitions that match the keyword
+ * Cache entry for pre-computed completion items by keyword.
  */
-function filterByKeyword(
-  definitions: StepDefinition[],
-  effectiveKeyword: StepKeyword | null
-): StepDefinition[] {
-  if (!effectiveKeyword) {
-    // If we can't determine the keyword, show all definitions
-    return definitions;
-  }
-
-  return definitions.filter(
-    (def) => def.keyword === "step" || def.keyword === effectiveKeyword
-  );
+interface CompletionCache {
+  /** Scanner version when cache was created */
+  version: number;
+  /** Pre-computed items by effective keyword (null = all keywords) */
+  byKeyword: Map<StepKeyword | "all", vscode.CompletionItem[]>;
 }
 
 /**
  * Provides step completion suggestions in .feature files.
+ * Caches completion items by scanner version and keyword for performance.
  */
 export class StepCompletionProvider implements vscode.CompletionItemProvider {
+  /** Cached completion items */
+  private cache: CompletionCache | null = null;
+
   /**
    * Provides completion items for steps in .feature files.
    */
@@ -98,39 +112,86 @@ export class StepCompletionProvider implements vscode.CompletionItemProvider {
     if (lowerKeyword === "given" || lowerKeyword === "when" || lowerKeyword === "then") {
       effectiveKeyword = lowerKeyword as StepKeyword;
     } else if (lowerKeyword === "and" || lowerKeyword === "but" || lowerKeyword === "*") {
-      // Resolve parent keyword by scanning backwards
-      const lines = document.getText().split("\n");
-      effectiveKeyword = resolveEffectiveKeyword(lines, position.line);
+      // Resolve parent keyword by scanning backwards using document.lineAt()
+      effectiveKeyword = resolveEffectiveKeyword(document, position.line);
     }
 
-    // Get all step definitions
-    const scanner = getStepScanner();
-    const allDefinitions = scanner.getAllDefinitions();
+    // Get cached items for this keyword
+    const cacheKey: StepKeyword | "all" = effectiveKeyword ?? "all";
+    const cachedItems = this.getCachedItems(document, cacheKey);
 
-    // Filter by keyword
-    const filteredDefinitions = filterByKeyword(allDefinitions, effectiveKeyword);
+    // Create the replacement range once
+    const range = new vscode.Range(position.line, keywordEnd, position.line, line.length);
 
     // Filter by partial text match (case-insensitive)
     const lowerPartial = partialText.toLowerCase().trim();
-    const matchingDefinitions = lowerPartial
-      ? filteredDefinitions.filter((def) =>
-          def.pattern.toLowerCase().includes(lowerPartial)
-        )
-      : filteredDefinitions;
 
-    // Sort results: prioritize patterns that start with the partial text
-    const sortedDefinitions = [...matchingDefinitions].sort((a, b) => {
-      const aLower = a.pattern.toLowerCase();
-      const bLower = b.pattern.toLowerCase();
-      const aStartsWith = aLower.startsWith(lowerPartial);
-      const bStartsWith = bLower.startsWith(lowerPartial);
+    if (lowerPartial) {
+      // Filter matching items
+      let items = cachedItems.filter((item) =>
+        item.label.toString().toLowerCase().includes(lowerPartial)
+      );
 
-      if (aStartsWith && !bStartsWith) return -1;
-      if (!aStartsWith && bStartsWith) return 1;
-      return aLower.localeCompare(bLower);
-    });
+      // Re-sort to prioritize patterns that start with the partial text
+      items.sort((a, b) => {
+        const aLabel = a.label.toString().toLowerCase();
+        const bLabel = b.label.toString().toLowerCase();
+        const aStartsWith = aLabel.startsWith(lowerPartial);
+        const bStartsWith = bLabel.startsWith(lowerPartial);
 
-    // Deduplicate by pattern (same pattern might be defined multiple times)
+        if (aStartsWith && !bStartsWith) return -1;
+        if (!aStartsWith && bStartsWith) return 1;
+        return aLabel.localeCompare(bLabel);
+      });
+
+      // Clone items with updated sort text and range
+      return items.map((item, i) =>
+        cloneCompletionItemWithRange(item, range, String(i).padStart(SORT_TEXT_PAD_LENGTH, "0"))
+      );
+    }
+
+    // No filtering needed - set range on cached items directly
+    // VS Code handles the range property being set on shared items
+    for (const item of cachedItems) {
+      item.range = range;
+    }
+    return cachedItems;
+  }
+
+  /**
+   * Get cached completion items for a keyword, rebuilding cache if needed.
+   */
+  private getCachedItems(
+    document: vscode.TextDocument,
+    cacheKey: StepKeyword | "all"
+  ): vscode.CompletionItem[] {
+    const scanner = getStepScanner();
+    const currentVersion = scanner.getVersion();
+
+    // Invalidate cache if version changed
+    if (this.cache?.version !== currentVersion) {
+      this.cache = {
+        version: currentVersion,
+        byKeyword: new Map(),
+      };
+    }
+
+    // Check if we have cached items for this keyword
+    const cached = this.cache.byKeyword.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    // Build items for this keyword using indexed lookup
+    const effectiveKeyword = cacheKey === "all" ? null : cacheKey;
+    const filteredDefinitions = scanner.getDefinitionsByKeyword(effectiveKeyword);
+
+    // Sort alphabetically
+    const sortedDefinitions = [...filteredDefinitions].sort((a, b) =>
+      a.pattern.toLowerCase().localeCompare(b.pattern.toLowerCase())
+    );
+
+    // Deduplicate by pattern
     const seenPatterns = new Set<string>();
     const uniqueDefinitions: StepDefinition[] = [];
 
@@ -141,8 +202,9 @@ export class StepCompletionProvider implements vscode.CompletionItemProvider {
       }
     }
 
-    // Create completion items
+    // Create completion items (without range - will be set per-invocation)
     const items: vscode.CompletionItem[] = [];
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
 
     for (let i = 0; i < uniqueDefinitions.length; i++) {
       const def = uniqueDefinitions[i];
@@ -156,8 +218,6 @@ export class StepCompletionProvider implements vscode.CompletionItemProvider {
       item.insertText = new vscode.SnippetString(snippetText);
       item.detail = `${def.keyword} step`;
 
-      // Get relative path for documentation
-      const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
       const relativePath = workspaceFolder
         ? path.relative(workspaceFolder.uri.fsPath, def.filePath)
         : path.basename(def.filePath);
@@ -166,21 +226,12 @@ export class StepCompletionProvider implements vscode.CompletionItemProvider {
         `Defined in \`${relativePath}:${def.line + 1}\``
       );
 
-      // Set sort order to maintain our custom sorting
-      item.sortText = String(i).padStart(5, "0");
-
-      // Replace from the end of the keyword (after the space)
-      const range = new vscode.Range(
-        position.line,
-        keywordEnd,
-        position.line,
-        line.length
-      );
-      item.range = range;
+      item.sortText = String(i).padStart(SORT_TEXT_PAD_LENGTH, "0");
 
       items.push(item);
     }
 
+    this.cache.byKeyword.set(cacheKey, items);
     return items;
   }
 }

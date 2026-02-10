@@ -55,7 +55,7 @@ export function getPythonInterpreterPath(
  * @param workspaceRoot Path to the workspace root
  * @returns Resolved path or null if not found
  */
-export function resolveInterpreterPath(
+function resolveInterpreterPath(
   interpreterPath: string,
   workspaceRoot: string
 ): string | null {
@@ -64,9 +64,13 @@ export function resolveInterpreterPath(
     return trimmed;
   }
 
+  // Check common virtual environment locations with platform-specific paths
+  const isWindows = process.platform === "win32";
   const venvCandidates = [".venv", "venv"];
   for (const venvFolder of venvCandidates) {
-    const venvPython = path.join(workspaceRoot, venvFolder, "bin", "python");
+    const venvPython = isWindows
+      ? path.join(workspaceRoot, venvFolder, "Scripts", "python.exe")
+      : path.join(workspaceRoot, venvFolder, "bin", "python");
     if (fs.existsSync(venvPython)) {
       return venvPython;
     }

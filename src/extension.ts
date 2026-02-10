@@ -7,6 +7,8 @@ import { BehaveCodeLensProvider } from "./codeLensProvider";
 import { runScenarioHandler, debugScenarioHandler } from "./commandHandlers";
 import { initializeServices, disposeServices } from "./services";
 import { logger } from "./logger";
+import { debounce } from "./utils";
+import { FILE_WATCHER_DEBOUNCE_MS } from "./constants";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // Initialize logger
@@ -27,6 +29,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   ];
 
   context.subscriptions.push(
+    codeLensProvider,
     vscode.languages.registerCodeLensProvider(languageSelector, codeLensProvider)
   );
 
@@ -59,19 +62,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const diagnosticsProvider = new StepDiagnosticsProvider();
   context.subscriptions.push(diagnosticsProvider);
 
-  // Refresh diagnostics when Python step files change
+  // Refresh diagnostics when Python step files change (debounced to avoid excessive updates)
   const pythonWatcher = vscode.workspace.createFileSystemWatcher("**/*.py");
+  const debouncedRefreshDiagnostics = debounce(
+    () => diagnosticsProvider.refreshAll(),
+    FILE_WATCHER_DEBOUNCE_MS
+  );
   context.subscriptions.push(
     pythonWatcher,
-    pythonWatcher.onDidChange(() => diagnosticsProvider.refreshAll()),
-    pythonWatcher.onDidCreate(() => diagnosticsProvider.refreshAll()),
-    pythonWatcher.onDidDelete(() => diagnosticsProvider.refreshAll())
+    pythonWatcher.onDidChange(debouncedRefreshDiagnostics),
+    pythonWatcher.onDidCreate(debouncedRefreshDiagnostics),
+    pythonWatcher.onDidDelete(debouncedRefreshDiagnostics)
   );
 
-  // Clear definition cache when documents close to prevent memory leaks
+  // Clear definition cache for closed documents to prevent memory leaks
   context.subscriptions.push(
-    vscode.workspace.onDidCloseTextDocument(() => {
-      definitionProvider.clearCache();
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      definitionProvider.clearCacheForFile(document.uri.fsPath);
     })
   );
 

@@ -5,9 +5,7 @@ import {
   parseStepLine,
   resolveEffectiveKeyword,
 } from "./stepMatcher";
-import { StepKeyword } from "./types";
-import { isInsideDocString } from "./utils";
-import { REGEX_SPECIAL_CHARS } from "./constants";
+import { isLineInsideDocStringDocument, escapeRegex } from "./utils";
 
 /**
  * Cache entry for a line's definition lookup result.
@@ -70,7 +68,7 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
 
       if (isValid) {
         // Check if cursor is within the step text range
-        if (cached.originRange && cached.originRange.contains(position)) {
+        if (cached.originRange?.contains(position)) {
           return cached.locationLinks;
         }
         // Cursor is not in the step range (e.g., on keyword)
@@ -92,7 +90,7 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
     });
 
     // Check if cursor is within the step text range
-    if (result.originRange && result.originRange.contains(position)) {
+    if (result.originRange?.contains(position)) {
       return result.locationLinks;
     }
 
@@ -129,15 +127,14 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
     const line = document.lineAt(position.line);
     const lineText = line.text;
 
-    // Parse the step from the current line
-    const lines = document.getText().split("\n");
-
     // Check if we're inside a doc string block - if so, ignore
-    if (isInsideDocString(lines, position.line)) {
+    // Uses document.lineAt() instead of splitting entire document
+    if (isLineInsideDocStringDocument(document, position.line)) {
       return { locationLinks: null, originRange: null };
     }
 
-    const effectiveKeyword = resolveEffectiveKeyword(lines, position.line);
+    // Resolve effective keyword using document.lineAt() for efficiency
+    const effectiveKeyword = resolveEffectiveKeyword(document, position.line);
 
     const stepInfo = parseStepLine(lineText, effectiveKeyword);
     if (!stepInfo) {
@@ -151,25 +148,21 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
       return { locationLinks: null, originRange: null };
     }
 
-    // Get all step definitions from the scanner
+    // Get step definitions filtered by keyword (uses indexed lookup)
     const scanner = getStepScanner();
-    let allDefinitions = scanner.getAllDefinitions();
+    let definitions = scanner.getDefinitionsByKeyword(stepInfo.effectiveKeyword);
 
-    if (allDefinitions.length === 0) {
+    if (definitions.length === 0) {
       // Scanner might not be initialized yet, try to initialize
       await scanner.initialize();
-      allDefinitions = scanner.getAllDefinitions();
-      if (allDefinitions.length === 0) {
+      definitions = scanner.getDefinitionsByKeyword(stepInfo.effectiveKeyword);
+      if (definitions.length === 0) {
         return { locationLinks: null, originRange };
       }
     }
 
-    // Find matching definitions
-    const matchingDefs = findMatchingDefinitions(
-      stepInfo.text,
-      stepInfo.effectiveKeyword as StepKeyword | null,
-      allDefinitions
-    );
+    // Find matching definitions (already filtered by keyword)
+    const matchingDefs = findMatchingDefinitions(stepInfo.text, definitions);
 
     if (matchingDefs.length === 0) {
       return { locationLinks: null, originRange };
@@ -210,22 +203,19 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
     const lineText = line.text;
 
     // Escape special regex characters in keyword (e.g., * becomes \*)
-    const escapedKeyword = keyword.replace(REGEX_SPECIAL_CHARS, "\\$&");
+    const escapedKeyword = escapeRegex(keyword);
 
-    // Find the keyword position
+    // Find the keyword position (match includes all whitespace after keyword)
     const keywordMatch = lineText.match(
-      new RegExp(`^(\\s*)(${escapedKeyword})\\s+`, "i")
+      new RegExp(`^\\s*${escapedKeyword}\\s+`, "i")
     );
 
     if (!keywordMatch) {
       return null;
     }
 
-    const indent = keywordMatch[1].length;
-    const keywordLength = keywordMatch[2].length;
-
-    // Start after keyword and space
-    const startChar = indent + keywordLength + 1;
+    // Start after the full match (keyword + all trailing whitespace)
+    const startChar = keywordMatch[0].length;
 
     // End at the end of the line (trimmed)
     const endChar = lineText.trimEnd().length;
@@ -241,9 +231,18 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
   }
 
   /**
-   * Clear the cache. Call this when documents close or on extension deactivation.
+   * Clear the entire cache. Call this on extension deactivation.
    */
   public clearCache(): void {
     this.cache.clear();
+  }
+
+  /**
+   * Clear the cache for a specific file. Call this when a document closes.
+   *
+   * @param filePath The file path to clear from cache
+   */
+  public clearCacheForFile(filePath: string): void {
+    this.cache.delete(filePath);
   }
 }

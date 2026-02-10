@@ -1,64 +1,45 @@
-import * as vscode from "vscode";
-import * as fs from "fs";
 import { FeatureStep, StepKeyword, IFeatureScanner } from "./types";
+import { BaseScanner } from "./baseScanner";
 import { behavePatternToRegex, parseStepLine } from "./stepMatcher";
 import {
   STRUCTURAL_KEYWORD_REGEX,
-  STEP_KEYWORD_REGEX,
   DEFAULT_FEATURE_FILE_PATTERNS,
+  REGEX_CACHE_MAX_SIZE,
 } from "./constants";
+import { LRUCache, getStepTextStartPosition, buildKeywordIndex, arraysEqual } from "./utils";
 import { logger } from "./logger";
 
 /**
  * Scans .feature files in the workspace for steps.
  * Provides caching and file watching for performance.
  */
-export class FeatureScanner implements IFeatureScanner {
-  private steps: Map<string, FeatureStep[]> = new Map();
-  private regexCache: Map<string, RegExp> = new Map();
-  private fileWatcher: vscode.FileSystemWatcher | null = null;
-  private initialized = false;
+export class FeatureScanner extends BaseScanner<FeatureStep> implements IFeatureScanner {
+  /** LRU cache of compiled regex patterns for step matching */
+  private regexCache = new LRUCache<string, RegExp>(REGEX_CACHE_MAX_SIZE);
 
-  /**
-   * Initialize the scanner and start watching for file changes.
-   */
-  public async initialize(): Promise<void> {
-    if (this.initialized) {
-      return;
-    }
-
-    await this.scanAllFiles();
-    this.setupFileWatcher();
-    this.initialized = true;
-  }
+  /** Index of steps by effective keyword for O(1) lookup */
+  private keywordIndex: Map<StepKeyword | "null", FeatureStep[]> | null = null;
 
   /**
    * Dispose of resources.
    */
-  public dispose(): void {
-    if (this.fileWatcher) {
-      this.fileWatcher.dispose();
-      this.fileWatcher = null;
-    }
-    this.steps.clear();
+  public override dispose(): void {
+    super.dispose();
     this.regexCache.clear();
-    this.initialized = false;
+    this.keywordIndex = null;
   }
 
   /**
    * Get all feature steps from the cache.
+   * Results are cached and invalidated when steps change.
    */
   public getAllSteps(): FeatureStep[] {
-    const allSteps: FeatureStep[] = [];
-    for (const steps of this.steps.values()) {
-      allSteps.push(...steps);
-    }
-    return allSteps;
+    return this.getAllItems();
   }
 
   /**
    * Find all feature steps that match a given pattern.
-   * 
+   *
    * @param pattern The Behave pattern string (e.g., 'the message is "{message}"')
    * @param keyword Optional keyword to filter by (given, when, then, step)
    * @returns Array of matching FeatureStep objects
@@ -67,80 +48,98 @@ export class FeatureScanner implements IFeatureScanner {
     // Use cached regex or compile and cache it
     let regex = this.regexCache.get(pattern);
     if (!regex) {
-      regex = behavePatternToRegex(pattern);
-      this.regexCache.set(pattern, regex);
+      try {
+        regex = behavePatternToRegex(pattern);
+        this.regexCache.set(pattern, regex);
+      } catch (error) {
+        // Invalid pattern - log and return empty array
+        logger.warn(`Invalid step pattern for matching: ${pattern}`, error);
+        return [];
+      }
     }
 
-    const allSteps = this.getAllSteps();
+    // Get steps filtered by keyword using the index
+    const steps = this.getStepsByKeyword(keyword ?? null);
 
-    return allSteps.filter((step) => {
-      // If keyword is specified and not "step", filter by effective keyword
-      if (keyword && keyword !== "step") {
-        if (step.effectiveKeyword !== keyword) {
-          return false;
-        }
-      }
-
-      return regex.test(step.text.trim());
-    });
+    return steps.filter((step) => regex.test(step.text.trim()));
   }
 
   /**
-   * Force a rescan of all files.
+   * Get feature steps filtered by effective keyword.
+   * Uses pre-built index for O(1) lookup instead of O(n) filtering.
+   *
+   * @param keyword The keyword to filter by, or null for all steps
+   * @returns Steps matching the keyword
    */
-  public async rescan(): Promise<void> {
-    this.steps.clear();
-    await this.scanAllFiles();
+  private getStepsByKeyword(keyword: StepKeyword | null): FeatureStep[] {
+    // "step" keyword matches all steps
+    if (!keyword || keyword === "step") {
+      return this.getAllSteps();
+    }
+
+    this.ensureKeywordIndex();
+
+    // Get steps for the specific keyword
+    return this.keywordIndex!.get(keyword) ?? [];
   }
 
   /**
-   * Get feature file patterns from configuration.
+   * Ensure the keyword index is built.
    */
-  private getPatterns(): string[] {
-    const config = vscode.workspace.getConfiguration("behaveRunner");
-    return config.get<string[]>(
-      "featureFiles.patterns",
-      [...DEFAULT_FEATURE_FILE_PATTERNS]
+  private ensureKeywordIndex(): void {
+    this.keywordIndex ??= buildKeywordIndex(
+      this.getAllSteps(),
+      (step) => step.effectiveKeyword
     );
   }
 
-  /**
-   * Scan all .feature files in the workspace.
-   */
-  private async scanAllFiles(): Promise<void> {
-    const patterns = this.getPatterns();
+  // ==================== BaseScanner Implementation ====================
 
-    for (const pattern of patterns) {
-      const files = await vscode.workspace.findFiles(
-        pattern,
-        "**/node_modules/**"
-      );
+  protected getWatcherPattern(): string {
+    return "**/*.feature";
+  }
 
-      for (const file of files) {
-        await this.scanFile(file.fsPath);
-      }
-    }
+  protected getConfigKey(): string {
+    return "featureFiles.patterns";
+  }
+
+  protected getDefaultPatterns(): readonly string[] {
+    return DEFAULT_FEATURE_FILE_PATTERNS;
+  }
+
+  protected getFileTypeName(): string {
+    return "feature file";
+  }
+
+  protected override invalidateAdditionalCaches(): void {
+    this.regexCache.clear();
+    this.keywordIndex = null;
+  }
+
+  protected override onItemsChanged(): void {
+    this.keywordIndex = null; // Invalidate keyword index when steps change
   }
 
   /**
-   * Scan a single .feature file for steps.
+   * Compare feature steps for equality without using JSON.stringify.
    */
-  private async scanFile(filePath: string): Promise<void> {
-    try {
-      const content = await fs.promises.readFile(filePath, "utf-8");
-      const steps = this.parseFileContent(filePath, content);
-      this.steps.set(filePath, steps);
-    } catch (error) {
-      // File might have been deleted or is inaccessible
-      logger.debug(`Failed to scan feature file: ${filePath}`, error);
-      this.steps.delete(filePath);
-    }
+  protected override areItemsEqual(
+    oldItems: FeatureStep[] | undefined,
+    newItems: FeatureStep[]
+  ): boolean {
+    return arraysEqual(oldItems, newItems, (a, b) =>
+      a.text === b.text &&
+      a.keyword === b.keyword &&
+      a.effectiveKeyword === b.effectiveKeyword &&
+      a.line === b.line &&
+      a.character === b.character
+    );
   }
 
   /**
    * Parse the content of a .feature file to extract steps.
    */
-  private parseFileContent(filePath: string, content: string): FeatureStep[] {
+  protected parseFileContent(filePath: string, content: string): FeatureStep[] {
     const steps: FeatureStep[] = [];
     const lines = content.split("\n");
     let previousKeyword: StepKeyword | null = null;
@@ -157,8 +156,7 @@ export class FeatureScanner implements IFeatureScanner {
       const stepInfo = parseStepLine(line, previousKeyword);
       if (stepInfo) {
         // Calculate character position where the step text starts
-        const keywordMatch = line.match(STEP_KEYWORD_REGEX);
-        const character = keywordMatch ? keywordMatch[0].length - keywordMatch[2].length : 0;
+        const character = getStepTextStartPosition(line);
 
         steps.push({
           text: stepInfo.text,
@@ -178,29 +176,4 @@ export class FeatureScanner implements IFeatureScanner {
 
     return steps;
   }
-
-  /**
-   * Set up file system watcher to keep cache in sync.
-   */
-  private setupFileWatcher(): void {
-    this.fileWatcher = vscode.workspace.createFileSystemWatcher(
-      "**/*.feature",
-      false,
-      false,
-      false
-    );
-
-    this.fileWatcher.onDidCreate(async (uri) => {
-      await this.scanFile(uri.fsPath);
-    });
-
-    this.fileWatcher.onDidChange(async (uri) => {
-      await this.scanFile(uri.fsPath);
-    });
-
-    this.fileWatcher.onDidDelete((uri) => {
-      this.steps.delete(uri.fsPath);
-    });
-  }
 }
-

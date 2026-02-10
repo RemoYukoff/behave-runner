@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 /**
  * Log levels for categorizing messages.
  */
-export enum LogLevel {
+enum LogLevel {
   DEBUG = "DEBUG",
   INFO = "INFO",
   WARN = "WARN",
@@ -27,9 +27,7 @@ class Logger {
    * Call this during extension activation.
    */
   public initialize(): void {
-    if (!this.outputChannel) {
-      this.outputChannel = vscode.window.createOutputChannel("Behave Runner");
-    }
+    this.outputChannel ??= vscode.window.createOutputChannel("Behave Runner");
   }
 
   /**
@@ -111,6 +109,7 @@ class Logger {
 
     // Also log to console in development
     if (process.env.NODE_ENV === "development") {
+      // eslint-disable-next-line no-console
       console.log(logMessage);
     }
   }

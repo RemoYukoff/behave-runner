@@ -11,7 +11,7 @@ import { FeatureScanner } from "./featureScanner";
 /**
  * Container for all application services.
  */
-export interface Services {
+interface Services {
   /** Scanner for Python step definitions */
   stepScanner: IStepScanner;
   /** Scanner for feature file steps */
@@ -51,7 +51,7 @@ export function initializeServices(): Services {
  * @returns The services container
  * @throws Error if services are not initialized
  */
-export function getServices(): Services {
+function getServices(): Services {
   if (!services) {
     throw new Error("Services not initialized. Call initializeServices() first.");
   }
@@ -90,11 +90,3 @@ export function disposeServices(): void {
   }
 }
 
-/**
- * Check if services are initialized.
- *
- * @returns true if services are available
- */
-export function isInitialized(): boolean {
-  return services !== null;
-}

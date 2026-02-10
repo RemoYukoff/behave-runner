@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
-import { findStepUsageLocations } from "./decoratorParser";
+import { isFunctionDefinition, findDecoratorsAbove } from "./decoratorParser";
+import { getFeatureScanner } from "./services";
+import { StepKeyword } from "./types";
 
 /**
  * Provides both "Go to Definition" and "Find References" for Behave step functions in Python files.
@@ -20,7 +22,7 @@ export class BehaveStepLocationProvider
     position: vscode.Position,
     _token: vscode.CancellationToken
   ): Promise<vscode.Location[] | null> {
-    return findStepUsageLocations(document, position);
+    return this.findStepUsageLocations(document, position);
   }
 
   /**
@@ -33,6 +35,60 @@ export class BehaveStepLocationProvider
     _context: vscode.ReferenceContext,
     _token: vscode.CancellationToken
   ): Promise<vscode.Location[] | null> {
-    return findStepUsageLocations(document, position);
+    return this.findStepUsageLocations(document, position);
+  }
+
+  /**
+   * Find all feature file locations where a step function is used.
+   *
+   * @param document The VS Code text document (Python file)
+   * @param position The cursor position
+   * @returns Array of Location objects pointing to .feature files, or null if not on a step function
+   */
+  private findStepUsageLocations(
+    document: vscode.TextDocument,
+    position: vscode.Position
+  ): vscode.Location[] | null {
+    const line = document.lineAt(position.line);
+
+    // Check if cursor is on a function definition
+    if (!isFunctionDefinition(line.text)) {
+      return null;
+    }
+
+    // Look backwards to find step decorators above the function
+    const decorators = findDecoratorsAbove(document, position.line);
+
+    if (decorators.length === 0) {
+      return null;
+    }
+
+    const featureScanner = getFeatureScanner();
+    const locations: vscode.Location[] = [];
+
+    // Find matching steps for each decorator pattern
+    for (const { keyword, pattern } of decorators) {
+      const matchingSteps = featureScanner.findMatchingSteps(
+        pattern,
+        keyword as StepKeyword
+      );
+
+      for (const step of matchingSteps) {
+        const uri = vscode.Uri.file(step.filePath);
+        const range = new vscode.Range(
+          step.line,
+          step.character,
+          step.line,
+          step.character + step.text.length
+        );
+        locations.push(new vscode.Location(uri, range));
+      }
+    }
+
+    if (locations.length === 0) {
+      return null;
+    }
+
+    return locations;
   }
 }

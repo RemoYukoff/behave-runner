@@ -7,9 +7,16 @@ import { FEATURE_LINE_REGEX, SCENARIO_LINE_REGEX } from "./constants";
  * Provides CodeLens for running and debugging Behave features and scenarios.
  * Adds "Run" and "Debug" buttons above Feature and Scenario definitions.
  */
-export class BehaveCodeLensProvider implements vscode.CodeLensProvider {
+export class BehaveCodeLensProvider implements vscode.CodeLensProvider, vscode.Disposable {
   private onDidChangeCodeLensesEmitter = new vscode.EventEmitter<void>();
   public readonly onDidChangeCodeLenses = this.onDidChangeCodeLensesEmitter.event;
+
+  /**
+   * Dispose of resources.
+   */
+  public dispose(): void {
+    this.onDidChangeCodeLensesEmitter.dispose();
+  }
 
   /**
    * Provide CodeLens for a document.

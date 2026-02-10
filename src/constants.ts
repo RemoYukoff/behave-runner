@@ -3,60 +3,53 @@
  * These regex patterns are used across multiple modules to parse Python step definitions.
  */
 
-/**
- * Regex patterns to match Behave step decorators in Python files.
- * These patterns are used for simple matching (without capturing indent).
- * Groups: 1=keyword, 2=pattern
- */
-export const DECORATOR_PATTERNS = [
-  // @given("pattern"), @when("pattern"), @then("pattern"), @step("pattern")
-  /^\s*@(given|when|then|step)\s*\(\s*(?:u?r?)?"((?:[^"\\]|\\.)*)"\s*\)/i,
-  // @given('pattern'), @when('pattern'), @then('pattern'), @step('pattern')
-  /^\s*@(given|when|then|step)\s*\(\s*(?:u?r?)?'((?:[^'\\]|\\.)*)'\s*\)/i,
-  // @given(re.compile(r"..."))
-  /^\s*@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?"((?:[^"\\]|\\.)*)"/i,
-  // @given(re.compile(r'...'))
-  /^\s*@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?'((?:[^'\\]|\\.)*)'/i,
-] as const;
+// ==================== Configuration Constants ====================
 
 /**
- * Regex to match Behave step decorators with double quotes, capturing indent.
- * Groups: 1=indent, 2=keyword, 3=pattern
- * Used by StepScanner for line-by-line parsing with position tracking.
+ * Number of files to scan in parallel during batch operations.
  */
-export const DECORATOR_REGEX_DOUBLE =
-  /^(\s*)@(given|when|then|step)\s*\(\s*(?:u?r?)?"((?:[^"\\]|\\.)*)"\s*\)/i;
+export const SCAN_BATCH_SIZE = 10;
 
 /**
- * Regex to match Behave step decorators with single quotes, capturing indent.
- * Groups: 1=indent, 2=keyword, 3=pattern
- * Used by StepScanner for line-by-line parsing with position tracking.
+ * Debounce delay in milliseconds for file watcher events.
  */
-export const DECORATOR_REGEX_SINGLE =
-  /^(\s*)@(given|when|then|step)\s*\(\s*(?:u?r?)?'((?:[^'\\]|\\.)*)'\s*\)/i;
+export const FILE_WATCHER_DEBOUNCE_MS = 300;
 
 /**
- * Regex for decorators with re.compile() and double quotes, capturing indent.
- * Groups: 1=indent, 2=keyword, 3=pattern
+ * Debounce delay in milliseconds for diagnostics updates on document changes.
  */
-export const DECORATOR_REGEX_COMPILE_DOUBLE =
-  /^(\s*)@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?"((?:[^"\\]|\\.)*)"/i;
+export const DIAGNOSTICS_DEBOUNCE_MS = 300;
 
 /**
- * Regex for decorators with re.compile() and single quotes, capturing indent.
- * Groups: 1=indent, 2=keyword, 3=pattern
+ * Padding length for sortText in completion items (supports up to 99999 items).
  */
-export const DECORATOR_REGEX_COMPILE_SINGLE =
-  /^(\s*)@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?'((?:[^'\\]|\\.)*)'/i;
+export const SORT_TEXT_PAD_LENGTH = 5;
+
+/**
+ * Maximum number of entries in the regex cache (LRU eviction).
+ */
+export const REGEX_CACHE_MAX_SIZE = 500;
+
+// ==================== Decorator Regex Patterns ====================
 
 /**
  * All decorator regex patterns with indent capture, for iteration.
+ * Groups: 1=indent, 2=keyword, 3=pattern
+ * 
+ * Supports:
+ * - @given/@when/@then/@step with double or single quotes
+ * - Optional u/r prefix for strings
+ * - re.compile() wrapped patterns
  */
 export const DECORATOR_REGEXES_WITH_INDENT = [
-  DECORATOR_REGEX_DOUBLE,
-  DECORATOR_REGEX_SINGLE,
-  DECORATOR_REGEX_COMPILE_DOUBLE,
-  DECORATOR_REGEX_COMPILE_SINGLE,
+  // Double quotes: @given("pattern")
+  /^(\s*)@(given|when|then|step)\s*\(\s*(?:u?r?)?"((?:[^"\\]|\\.)*)"\s*\)/i,
+  // Single quotes: @given('pattern')
+  /^(\s*)@(given|when|then|step)\s*\(\s*(?:u?r?)?'((?:[^'\\]|\\.)*)'\s*\)/i,
+  // re.compile() with double quotes: @given(re.compile(r"pattern"))
+  /^(\s*)@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?"((?:[^"\\]|\\.)*)"/i,
+  // re.compile() with single quotes: @given(re.compile(r'pattern'))
+  /^(\s*)@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?'((?:[^'\\]|\\.)*)'/i,
 ] as const;
 
 /**
@@ -126,8 +119,38 @@ export const REGEX_SPECIAL_CHARS = /[.*+?^${}()|[\]\\]/g;
 /**
  * Regex to match Behave placeholder syntax: {name} or {name:type}.
  * Groups: 1=name, 2=type (optional)
+ * 
+ * IMPORTANT: Reset lastIndex to 0 before each use to avoid stateful behavior
+ * with the global flag.
  */
-export const BEHAVE_PLACEHOLDER_REGEX = /\{(\w+)(?::(\w))?\}/g;
+export const BEHAVE_PLACEHOLDER_REGEX_GLOBAL = /\{(\w+)(?::(\w))?\}/g;
+
+// ==================== Behave Pattern Constants ====================
+
+/**
+ * Behave type placeholders and their regex equivalents.
+ * See: https://behave.readthedocs.io/en/stable/parse.html
+ */
+export const BEHAVE_TYPE_PATTERNS: Record<string, string> = {
+  d: "-?\\d+", // integer
+  f: "-?\\d+\\.?\\d*", // float
+  w: "\\w+", // word
+  W: "\\W+", // non-word
+  s: "\\s+", // whitespace
+  S: "\\S+", // non-whitespace
+} as const;
+
+/**
+ * Default pattern for untyped placeholders like {name}.
+ */
+export const DEFAULT_PLACEHOLDER_PATTERN = ".+";
+
+/**
+ * Pattern to match Scenario Outline placeholders like <name>.
+ */
+export const OUTLINE_PLACEHOLDER_PATTERN = "<[^>]+>";
+
+// ==================== Default Glob Patterns ====================
 
 /**
  * Default glob patterns for Python step definition files.

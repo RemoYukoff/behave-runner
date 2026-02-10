@@ -2,8 +2,8 @@ import * as vscode from "vscode";
 import { getStepScanner } from "./services";
 import { findMatchingDefinitions, parseStepLine } from "./stepMatcher";
 import { StepKeyword } from "./types";
-import { DocStringTracker } from "./utils";
-import { STRUCTURAL_KEYWORD_REGEX, STEP_KEYWORD_REGEX } from "./constants";
+import { debounce, DocStringTracker, isFeatureDocument, getStepTextStartPosition } from "./utils";
+import { STRUCTURAL_KEYWORD_REGEX, DIAGNOSTICS_DEBOUNCE_MS } from "./constants";
 
 /**
  * Provides diagnostics for undefined steps in .feature files.
@@ -11,15 +11,17 @@ import { STRUCTURAL_KEYWORD_REGEX, STEP_KEYWORD_REGEX } from "./constants";
 export class StepDiagnosticsProvider implements vscode.Disposable {
   private diagnosticCollection: vscode.DiagnosticCollection;
   private disposables: vscode.Disposable[] = [];
+  /** Debounced update function per document URI to avoid excessive updates during typing */
+  private debouncedUpdates = new Map<string, (doc: vscode.TextDocument) => void>();
 
   constructor() {
     this.diagnosticCollection = vscode.languages.createDiagnosticCollection("behave");
 
-    // Update diagnostics when documents change
+    // Update diagnostics when documents change (debounced to avoid lag during typing)
     this.disposables.push(
       vscode.workspace.onDidChangeTextDocument((event) => {
-        if (this.isFeatureFile(event.document)) {
-          this.updateDiagnostics(event.document);
+        if (isFeatureDocument(event.document)) {
+          this.getDebouncedUpdate(event.document.uri.toString())(event.document);
         }
       })
     );
@@ -27,35 +29,22 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
     // Update diagnostics when documents open
     this.disposables.push(
       vscode.workspace.onDidOpenTextDocument((document) => {
-        if (this.isFeatureFile(document)) {
+        if (isFeatureDocument(document)) {
           this.updateDiagnostics(document);
         }
       })
     );
 
-    // Clear diagnostics when documents close
+    // Clear diagnostics and debounced updates when documents close
     this.disposables.push(
       vscode.workspace.onDidCloseTextDocument((document) => {
         this.diagnosticCollection.delete(document.uri);
+        this.debouncedUpdates.delete(document.uri.toString());
       })
     );
 
     // Initial scan of open documents
-    vscode.workspace.textDocuments.forEach((document) => {
-      if (this.isFeatureFile(document)) {
-        this.updateDiagnostics(document);
-      }
-    });
-  }
-
-  /**
-   * Check if a document is a .feature file.
-   */
-  private isFeatureFile(document: vscode.TextDocument): boolean {
-    return (
-      document.languageId === "behave" ||
-      document.fileName.endsWith(".feature")
-    );
+    this.refreshAll();
   }
 
   /**
@@ -64,7 +53,6 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
   public updateDiagnostics(document: vscode.TextDocument): void {
     const diagnostics: vscode.Diagnostic[] = [];
     const scanner = getStepScanner();
-    const allDefinitions = scanner.getAllDefinitions();
 
     let previousKeyword: StepKeyword | null = null;
     const docStringTracker = new DocStringTracker();
@@ -93,23 +81,21 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
         previousKeyword = stepInfo.effectiveKeyword;
       }
 
+      // Get definitions filtered by keyword (uses indexed lookup)
+      const definitions = scanner.getDefinitionsByKeyword(stepInfo.effectiveKeyword);
+
       // Find matching definitions
-      const matches = findMatchingDefinitions(
-        stepInfo.text,
-        stepInfo.effectiveKeyword,
-        allDefinitions
-      );
+      const matches = findMatchingDefinitions(stepInfo.text, definitions);
 
       if (matches.length === 0) {
         // No matching definition found - create a diagnostic
-        const stepMatch = lineText.match(STEP_KEYWORD_REGEX);
-        const startChar = stepMatch ? stepMatch[0].length - stepMatch[2].length : 0;
+        const startChar = getStepTextStartPosition(lineText);
 
         const range = new vscode.Range(
           lineIndex,
           startChar,
           lineIndex,
-          lineText.length
+          lineText.trimEnd().length
         );
 
         const diagnostic = new vscode.Diagnostic(
@@ -133,7 +119,7 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
    */
   public refreshAll(): void {
     vscode.workspace.textDocuments.forEach((document) => {
-      if (this.isFeatureFile(document)) {
+      if (isFeatureDocument(document)) {
         this.updateDiagnostics(document);
       }
     });
@@ -145,5 +131,22 @@ export class StepDiagnosticsProvider implements vscode.Disposable {
   public dispose(): void {
     this.diagnosticCollection.dispose();
     this.disposables.forEach((d) => d.dispose());
+    this.debouncedUpdates.clear();
+  }
+
+  /**
+   * Get or create a debounced update function for a specific document.
+   * Each document gets its own debounced function to avoid interference.
+   */
+  private getDebouncedUpdate(uriString: string): (doc: vscode.TextDocument) => void {
+    let debouncedFn = this.debouncedUpdates.get(uriString);
+    if (!debouncedFn) {
+      debouncedFn = debounce(
+        (doc: vscode.TextDocument) => this.updateDiagnostics(doc),
+        DIAGNOSTICS_DEBOUNCE_MS
+      );
+      this.debouncedUpdates.set(uriString, debouncedFn);
+    }
+    return debouncedFn;
   }
 }
