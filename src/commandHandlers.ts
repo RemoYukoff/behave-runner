@@ -23,20 +23,32 @@ function escapeShellArg(str: string): string {
 }
 
 /**
+ * Validate the RunScenarioArgs object.
+ * @returns Error message if invalid, null if valid
+ */
+function validateRunScenarioArgs(args: RunScenarioArgs, action: string): string | null {
+  if (!args?.filePath) {
+    return "Behave Runner: missing file path.";
+  }
+  if (!args.workspaceRoot) {
+    return "Behave Runner: missing workspace root.";
+  }
+  if (!args.runAll && !args.scenarioName) {
+    return `Behave Runner: missing scenario name for ${action}.`;
+  }
+  return null;
+}
+
+/**
  * Handle the "Run Scenario" command.
  * Executes behave in the terminal for the specified scenario or feature.
  *
  * @param args Arguments containing file path, scenario name, and workspace root
  */
 export async function runScenarioHandler(args: RunScenarioArgs): Promise<void> {
-  if (!args?.filePath) {
-    vscode.window.showErrorMessage("Behave Runner: missing scenario information.");
-    return;
-  }
-
-  // Validate scenarioName is present when not running all
-  if (!args.runAll && !args.scenarioName) {
-    vscode.window.showErrorMessage("Behave Runner: missing scenario name for run.");
+  const validationError = validateRunScenarioArgs(args, "run");
+  if (validationError) {
+    vscode.window.showErrorMessage(validationError);
     return;
   }
 
@@ -66,16 +78,13 @@ export async function runScenarioHandler(args: RunScenarioArgs): Promise<void> {
  * @param args Arguments containing file path, scenario name, and workspace root
  */
 export async function debugScenarioHandler(args: RunScenarioArgs): Promise<void> {
-  if (!args?.filePath) {
-    vscode.window.showErrorMessage("Behave Runner: missing scenario information.");
+  const validationError = validateRunScenarioArgs(args, "debug");
+  if (validationError) {
+    vscode.window.showErrorMessage(validationError);
     return;
   }
 
   const scenarioName = args.scenarioName ?? "";
-  if (!args.runAll && !scenarioName) {
-    vscode.window.showErrorMessage("Behave Runner: missing scenario name for debug.");
-    return;
-  }
 
   const debugArgs = args.runAll ? [args.filePath] : [args.filePath, "-n", scenarioName];
 
