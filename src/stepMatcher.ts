@@ -4,7 +4,7 @@ import {
   DIRECT_KEYWORD_REGEX,
   CONTINUATION_KEYWORD_REGEX,
   EMPTY_OR_COMMENT_REGEX,
-  BEHAVE_PLACEHOLDER_REGEX_GLOBAL,
+  createPlaceholderRegex,
   BEHAVE_TYPE_PATTERNS,
   DEFAULT_PLACEHOLDER_PATTERN,
   OUTLINE_PLACEHOLDER_PATTERN,
@@ -34,9 +34,8 @@ export function behavePatternToRegex(pattern: string): RegExp {
   // 1. The expected value type (e.g., \d+ for integers)
   // 2. OR a Scenario Outline placeholder (<name>)
   // Pattern: {name} or {name:type}
-  // Reset lastIndex before use since we're reusing the global regex
-  BEHAVE_PLACEHOLDER_REGEX_GLOBAL.lastIndex = 0;
-  regexStr = regexStr.replace(BEHAVE_PLACEHOLDER_REGEX_GLOBAL, (_, _name, type) => {
+  // Use a fresh regex to avoid lastIndex state issues
+  regexStr = regexStr.replace(createPlaceholderRegex(), (_, _name, type) => {
     const typePattern = type && BEHAVE_TYPE_PATTERNS[type]
       ? BEHAVE_TYPE_PATTERNS[type]
       : DEFAULT_PLACEHOLDER_PATTERN;

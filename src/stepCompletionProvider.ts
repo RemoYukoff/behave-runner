@@ -3,7 +3,7 @@ import * as path from "path";
 import { getStepScanner } from "./services";
 import { resolveEffectiveKeyword } from "./stepMatcher";
 import { StepDefinition, StepKeyword } from "./types";
-import { STEP_KEYWORD_PARTIAL_REGEX, BEHAVE_PLACEHOLDER_REGEX_GLOBAL, SORT_TEXT_PAD_LENGTH } from "./constants";
+import { STEP_KEYWORD_PARTIAL_REGEX, createPlaceholderRegex, SORT_TEXT_PAD_LENGTH } from "./constants";
 
 /**
  * Clone a CompletionItem with a new range and optional sortText.
@@ -37,11 +37,9 @@ function cloneCompletionItemWithRange(
 function behavePatternToSnippet(pattern: string): string {
   let snippetIndex = 1;
 
-  // Reset lastIndex before use since we're reusing the global regex
-  BEHAVE_PLACEHOLDER_REGEX_GLOBAL.lastIndex = 0;
-
   // Replace Behave placeholders {name} or {name:type} with VS Code snippet placeholders
-  return pattern.replace(BEHAVE_PLACEHOLDER_REGEX_GLOBAL, (_, name) => {
+  // Use a fresh regex to avoid lastIndex state issues
+  return pattern.replace(createPlaceholderRegex(), (_, name) => {
     return `\${${snippetIndex++}:${name}}`;
   });
 }
@@ -93,9 +91,14 @@ export class StepCompletionProvider implements vscode.CompletionItemProvider {
   public provideCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position,
-    _token: vscode.CancellationToken,
+    token: vscode.CancellationToken,
     _context: vscode.CompletionContext
   ): vscode.CompletionItem[] | null {
+    // Early exit if operation was cancelled
+    if (token.isCancellationRequested) {
+      return null;
+    }
+
     const line = document.lineAt(position.line).text;
     const parsed = parseCurrentLine(line);
 
@@ -150,12 +153,11 @@ export class StepCompletionProvider implements vscode.CompletionItemProvider {
       );
     }
 
-    // No filtering needed - set range on cached items directly
-    // VS Code handles the range property being set on shared items
-    for (const item of cachedItems) {
-      item.range = range;
-    }
-    return cachedItems;
+    // Clone cached items with the new range to avoid mutating shared cache
+    // This prevents race conditions when multiple documents request completions simultaneously
+    return cachedItems.map((item) =>
+      cloneCompletionItemWithRange(item, range, item.sortText)
+    );
   }
 
   /**
