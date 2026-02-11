@@ -237,12 +237,11 @@ Feature: Go to Definition Test Cases
   # =========================================================================
   # Doc Strings (triple quoted text blocks)
   # =========================================================================
-    ```
-    Given This is a scenario description using triple quotes.
+
+  Scenario: Scenario with description
+    This is a scenario description.
     It can span multiple lines and is used to provide
     additional context about what the scenario tests.
-    ```
-  Scenario: Scenario with description using triple quotes
 
     Given the first number is 1
     When I add 2
@@ -257,7 +256,7 @@ Feature: Go to Definition Test Cases
     """
     Then the system processes the text
 
-  Scenario: Step with doc string using triple backticks
+  Scenario: Step with doc string containing code
     Given a sample text loaded into the system
     """
       def hello():
@@ -294,10 +293,10 @@ Feature: Go to Definition Test Cases
     """
     Then the system processes the text
 
-  Scenario: Backtick doc string with step keywords
+  Scenario: Doc string with step keywords
     Given a sample text loaded into the system
     """
-      Given inside backticks
+      Given inside doc string
       When this should also be ignored
       Then no false positives here
     """
