@@ -59,6 +59,24 @@ Full syntax highlighting for `.feature` files including keywords, strings, comme
 | `behaveRunner.debug.justMyCode` | Only debug user code (skip library code) | `true` |
 | `behaveRunner.stepDefinitions.patterns` | Glob patterns for Python step definition files | `["**/steps/**/*.py", "**/*_steps.py", "**/step_*.py", "**/steps.py"]` |
 | `behaveRunner.featureFiles.patterns` | Glob patterns for Gherkin feature files | `["**/*.feature"]` |
+| `behaveRunner.additionalArgs` | Additional command-line arguments to pass to Behave | `[]` |
+
+### Example: Additional Arguments
+
+To disable output capturing (useful for debugging with print statements):
+
+```json
+{
+  "behaveRunner.additionalArgs": ["--no-capture", "--no-capture-stderr"]
+}
+```
+
+Common Behave arguments:
+- `--no-capture` - Don't capture stdout
+- `--no-capture-stderr` - Don't capture stderr
+- `--tags=@smoke` - Run only scenarios with specific tags
+- `--dry-run` - Invokes formatters without running steps
+- `--no-skipped` - Don't print skipped steps
 
 ## Requirements
 

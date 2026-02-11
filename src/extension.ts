@@ -115,14 +115,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       const filePath = args.filePath.replace(/"/g, '\\"');
       const scenarioName = args.scenarioName ? args.scenarioName.replace(/"/g, '\\"') : "";
-      const behaveCommand = args.runAll
-        ? `behave "${filePath}"`
-        : `behave "${filePath}" -n "${scenarioName}"`;
+      const additionalArgs = getAdditionalArgs(args.filePath);
+      const additionalArgsStr = additionalArgs.length > 0 ? " " + additionalArgs.join(" ") : "";
 
       const interpreter = getPythonInterpreterPath(args.filePath, args.workspaceRoot);
-      const command = interpreter.path
-        ? `"${interpreter.path}" -m behave "${filePath}" -n "${scenarioName}"`
-        : behaveCommand;
+      let command: string;
+
+      if (interpreter.path) {
+        command = args.runAll
+          ? `"${interpreter.path}" -m behave "${filePath}"${additionalArgsStr}`
+          : `"${interpreter.path}" -m behave "${filePath}" -n "${scenarioName}"${additionalArgsStr}`;
+      } else {
+        command = args.runAll
+          ? `behave "${filePath}"${additionalArgsStr}`
+          : `behave "${filePath}" -n "${scenarioName}"${additionalArgsStr}`;
+      }
 
       let terminal = vscode.window.activeTerminal;
       if (!terminal) {
@@ -147,7 +154,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
 
-      const debugArgs = args.runAll ? [args.filePath] : [args.filePath, "-n", scenarioName];
+      const additionalArgs = getAdditionalArgs(args.filePath);
+      const debugArgs = args.runAll
+        ? [args.filePath, ...additionalArgs]
+        : [args.filePath, "-n", scenarioName, ...additionalArgs];
 
       const workspaceFolder = vscode.workspace.getWorkspaceFolder(
         vscode.Uri.file(args.filePath)
@@ -239,4 +249,10 @@ function getJustMyCodeSetting(resourcePath: string): boolean {
   const resourceUri = vscode.Uri.file(resourcePath);
   const config = vscode.workspace.getConfiguration("behaveRunner", resourceUri);
   return config.get<boolean>("debug.justMyCode", true);
+}
+
+function getAdditionalArgs(resourcePath: string): string[] {
+  const resourceUri = vscode.Uri.file(resourcePath);
+  const config = vscode.workspace.getConfiguration("behaveRunner", resourceUri);
+  return config.get<string[]>("additionalArgs", []);
 }
