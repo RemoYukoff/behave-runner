@@ -9,6 +9,7 @@ import { getFeatureScanner, disposeFeatureScanner } from "./featureScanner";
 import { StepCompletionProvider } from "./stepCompletionProvider";
 import { StepDiagnosticsProvider } from "./stepDiagnosticsProvider";
 import { BehaveCodeLensProvider } from "./codeLensProvider";
+import { FeatureFormattingProvider } from "./featureFormattingProvider";
 import { RunScenarioArgs, InterpreterInfo } from "./types";
 import { logger } from "./logger";
 
@@ -76,6 +77,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Register the Diagnostics Provider for undefined steps
   const diagnosticsProvider = new StepDiagnosticsProvider();
   context.subscriptions.push(diagnosticsProvider);
+
+  // Register the Formatting Provider for .feature files
+  const formattingProvider = new FeatureFormattingProvider();
+  context.subscriptions.push(
+    vscode.languages.registerDocumentFormattingEditProvider(
+      languageSelector,
+      formattingProvider
+    ),
+    vscode.languages.registerDocumentRangeFormattingEditProvider(
+      languageSelector,
+      formattingProvider
+    )
+  );
 
   // Refresh diagnostics when Python step files change
   const pythonWatcher = vscode.workspace.createFileSystemWatcher("**/*.py");

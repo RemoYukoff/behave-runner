@@ -37,6 +37,17 @@ Start typing a step after `Given`, `When`, `Then`, `And`, or `But` and get autoc
 
 Get real-time warnings for steps in `.feature` files that don't have a matching Python definition. Undefined steps are highlighted with a yellow underline.
 
+### Document Formatting
+
+Format your `.feature` files with proper Gherkin indentation and table alignment.
+
+- **Format Document**: Use `Shift+Alt+F` (or `Shift+Option+F` on Mac) to format the entire file
+- **Format Selection**: Select a range and format just that section
+- Proper indentation for `Feature`, `Scenario`, steps, and tables
+- Automatic table column alignment
+- Tag and doc string formatting
+- Supports `Rule` keyword with nested indentation
+
 ### Syntax Highlighting
 
 Full syntax highlighting for `.feature` files including keywords, strings, comments, tags, and data tables.
