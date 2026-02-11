@@ -83,9 +83,9 @@ Feature: Go to Definition Test Cases
     Then the product description is <desc>
 
     Examples:
-      | name    | desc              |
-      | Widget  | A useful item     |
-      | Gadget  | High tech device  |
+      | name   | desc             |
+      | Widget | A useful item    |
+      | Gadget | High tech device |
 
   # =========================================================================
   # @step decorator (works with Given/When/Then)
@@ -160,9 +160,9 @@ Feature: Go to Definition Test Cases
     Then the area is <area>
 
     Examples:
-      | w | h  | area |
-      | 3 | 4  | 12   |
-      | 7 | 8  | 56   |
+      | w | h | area |
+      | 3 | 4 | 12   |
+      | 7 | 8 | 56   |
 
   # =========================================================================
   # Steps with special characters (regex escaping)
@@ -179,9 +179,9 @@ Feature: Go to Definition Test Cases
     Then the result contains <count> matches
 
     Examples:
-      | file      | pattern   | count |
-      | data.csv  | ^header   | 1     |
-      | log.txt   | ERROR.*   | 10    |
+      | file     | pattern | count |
+      | data.csv | ^header | 1     |
+      | log.txt  | ERROR.* | 10    |
 
   # =========================================================================
   # Steps with quoted strings (double quotes)
@@ -237,39 +237,39 @@ Feature: Go to Definition Test Cases
   # =========================================================================
   # Doc Strings (triple quoted text blocks)
   # =========================================================================
-
-  Scenario: Scenario with description using triple quotes
-    """
+    ```
     Given This is a scenario description using triple quotes.
     It can span multiple lines and is used to provide
     additional context about what the scenario tests.
-    """
+    ```
+  Scenario: Scenario with description using triple quotes
+
     Given the first number is 1
     When I add 2
     Then the result is 3
 
   Scenario: Step with doc string using triple double quotes
     Given a sample text loaded into the system
-      """
+    """
       This is a multi-line text block.
       It can contain "quotes" and special characters.
       Used for passing large text to steps.
-      """
+    """
     Then the system processes the text
 
   Scenario: Step with doc string using triple backticks
     Given a sample text loaded into the system
-      ```
+    """
       def hello():
           print("Hello, World!")
       
       hello()
-      ```
+    """
     Then the system processes the text
 
   Scenario: Step with doc string containing code
     Given a sample text loaded into the system
-      """json
+    """json
       {
         "name": "test",
         "value": 123,
@@ -277,28 +277,28 @@ Feature: Go to Definition Test Cases
           "key": "value"
         }
       }
-      """
+    """
     Then the system processes the text
 
   Scenario: Doc string with step keywords should not trigger warnings
     # This test verifies that step keywords inside doc strings are ignored
     # and do not produce "undefined step" diagnostics
     Given a sample text loaded into the system
-      """
+    """
       Given this looks like a step but it's just text
       When the parser sees this it should ignore it
       Then no warning should appear for these lines
       And neither for this one
       But this is also fine
       * even the star keyword should be ignored
-      """
+    """
     Then the system processes the text
 
   Scenario: Backtick doc string with step keywords
     Given a sample text loaded into the system
-      ```
+    """
       Given inside backticks
       When this should also be ignored
       Then no false positives here
-      ```
+    """
     Then the system processes the text

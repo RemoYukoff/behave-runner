@@ -16,7 +16,7 @@ export class FeatureFormattingProvider
   private static readonly STEP_REGEX = /^(\s*)(Given|When|Then|And|But|\*)\s+/i;
   private static readonly TAG_REGEX = /^(\s*)@/;
   private static readonly TABLE_REGEX = /^(\s*)\|/;
-  private static readonly DOC_STRING_REGEX = /^(\s*)("""|```)/;
+  private static readonly DOC_STRING_REGEX = /^(\s*)(""")/;
   private static readonly COMMENT_REGEX = /^(\s*)#/;
   private static readonly EMPTY_REGEX = /^\s*$/;
 
