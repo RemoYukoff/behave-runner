@@ -239,9 +239,11 @@ Feature: Go to Definition Test Cases
   # =========================================================================
 
   Scenario: Scenario with description
+    """
     This is a scenario description.
     It can span multiple lines and is used to provide
     additional context about what the scenario tests.
+    """
 
     Given the first number is 1
     When I add 2
