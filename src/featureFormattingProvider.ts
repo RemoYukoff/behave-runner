@@ -1,4 +1,17 @@
 import * as vscode from "vscode";
+import {
+  FORMAT_FEATURE_REGEX,
+  FORMAT_RULE_REGEX,
+  FORMAT_BACKGROUND_REGEX,
+  FORMAT_SCENARIO_REGEX,
+  FORMAT_EXAMPLES_REGEX,
+  FORMAT_STEP_REGEX,
+  FORMAT_TAG_REGEX,
+  FORMAT_TABLE_REGEX,
+  FORMAT_DOC_STRING_REGEX,
+  FORMAT_COMMENT_REGEX,
+  FORMAT_EMPTY_REGEX,
+} from "./constants";
 
 /**
  * Formatting provider for Gherkin .feature files.
@@ -7,19 +20,6 @@ import * as vscode from "vscode";
 export class FeatureFormattingProvider
   implements vscode.DocumentFormattingEditProvider, vscode.DocumentRangeFormattingEditProvider
 {
-  // Gherkin keyword patterns
-  private static readonly FEATURE_REGEX = /^(\s*)Feature:/i;
-  private static readonly RULE_REGEX = /^(\s*)Rule:/i;
-  private static readonly BACKGROUND_REGEX = /^(\s*)Background:/i;
-  private static readonly SCENARIO_REGEX = /^(\s*)Scenario(?: Outline)?:/i;
-  private static readonly EXAMPLES_REGEX = /^(\s*)Examples:/i;
-  private static readonly STEP_REGEX = /^(\s*)(Given|When|Then|And|But|\*)\s+/i;
-  private static readonly TAG_REGEX = /^(\s*)@/;
-  private static readonly TABLE_REGEX = /^(\s*)\|/;
-  private static readonly DOC_STRING_REGEX = /^(\s*)(""")/;
-  private static readonly COMMENT_REGEX = /^(\s*)#/;
-  private static readonly EMPTY_REGEX = /^\s*$/;
-
   // Standard indentation levels (in spaces)
   private static readonly INDENT = {
     FEATURE: 0,
@@ -71,7 +71,7 @@ export class FeatureFormattingProvider
       const text = line.text;
 
       // Handle doc strings (preserve content, just fix delimiter indentation)
-      if (FeatureFormattingProvider.DOC_STRING_REGEX.test(text)) {
+      if (FORMAT_DOC_STRING_REGEX.test(text)) {
         if (inDocString) {
           // Closing delimiter
           const indent = this.getIndentString(
@@ -105,7 +105,7 @@ export class FeatureFormattingProvider
       }
 
       // Skip empty lines but trim whitespace
-      if (FeatureFormattingProvider.EMPTY_REGEX.test(text)) {
+      if (FORMAT_EMPTY_REGEX.test(text)) {
         if (text !== "") {
           edits.push(vscode.TextEdit.replace(line.range, ""));
         }
@@ -136,63 +136,63 @@ export class FeatureFormattingProvider
       // Format based on keyword type
       let formatted: string;
 
-      if (FeatureFormattingProvider.FEATURE_REGEX.test(text)) {
+      if (FORMAT_FEATURE_REGEX.test(text)) {
         formatted = this.formatKeywordLine(text, FeatureFormattingProvider.INDENT.FEATURE, baseIndent, indentChar);
         inRule = false;
         inExamples = false;
-      } else if (FeatureFormattingProvider.RULE_REGEX.test(text)) {
+      } else if (FORMAT_RULE_REGEX.test(text)) {
         formatted = this.formatKeywordLine(text, FeatureFormattingProvider.INDENT.RULE, baseIndent, indentChar);
         inRule = true;
         inExamples = false;
-      } else if (FeatureFormattingProvider.BACKGROUND_REGEX.test(text)) {
+      } else if (FORMAT_BACKGROUND_REGEX.test(text)) {
         const indent = inRule
           ? FeatureFormattingProvider.INDENT.SCENARIO + 2
           : FeatureFormattingProvider.INDENT.SCENARIO;
         formatted = this.formatKeywordLine(text, indent, baseIndent, indentChar);
         inExamples = false;
-      } else if (FeatureFormattingProvider.SCENARIO_REGEX.test(text)) {
+      } else if (FORMAT_SCENARIO_REGEX.test(text)) {
         const indent = inRule
           ? FeatureFormattingProvider.INDENT.SCENARIO + 2
           : FeatureFormattingProvider.INDENT.SCENARIO;
         formatted = this.formatKeywordLine(text, indent, baseIndent, indentChar);
         inExamples = false;
-      } else if (FeatureFormattingProvider.EXAMPLES_REGEX.test(text)) {
+      } else if (FORMAT_EXAMPLES_REGEX.test(text)) {
         const indent = inRule
           ? FeatureFormattingProvider.INDENT.EXAMPLES + 2
           : FeatureFormattingProvider.INDENT.EXAMPLES;
         formatted = this.formatKeywordLine(text, indent, baseIndent, indentChar);
         inExamples = true;
-      } else if (FeatureFormattingProvider.STEP_REGEX.test(text)) {
+      } else if (FORMAT_STEP_REGEX.test(text)) {
         const indent = inRule
           ? FeatureFormattingProvider.INDENT.STEP + 2
           : FeatureFormattingProvider.INDENT.STEP;
         formatted = this.formatStepLine(text, indent, baseIndent, indentChar);
         inExamples = false;
-      } else if (FeatureFormattingProvider.TAG_REGEX.test(text)) {
+      } else if (FORMAT_TAG_REGEX.test(text)) {
         // Tags go at the same level as the element they precede
         // Look ahead to determine context
         const nextNonEmpty = this.findNextNonEmptyLine(document, lineNum + 1, endLine);
         let tagIndent = FeatureFormattingProvider.INDENT.FEATURE;
         if (nextNonEmpty) {
-          if (FeatureFormattingProvider.FEATURE_REGEX.test(nextNonEmpty)) {
+          if (FORMAT_FEATURE_REGEX.test(nextNonEmpty)) {
             tagIndent = FeatureFormattingProvider.INDENT.FEATURE;
-          } else if (FeatureFormattingProvider.RULE_REGEX.test(nextNonEmpty)) {
+          } else if (FORMAT_RULE_REGEX.test(nextNonEmpty)) {
             tagIndent = FeatureFormattingProvider.INDENT.RULE;
           } else if (
-            FeatureFormattingProvider.SCENARIO_REGEX.test(nextNonEmpty) ||
-            FeatureFormattingProvider.BACKGROUND_REGEX.test(nextNonEmpty)
+            FORMAT_SCENARIO_REGEX.test(nextNonEmpty) ||
+            FORMAT_BACKGROUND_REGEX.test(nextNonEmpty)
           ) {
             tagIndent = inRule
               ? FeatureFormattingProvider.INDENT.SCENARIO + 2
               : FeatureFormattingProvider.INDENT.SCENARIO;
-          } else if (FeatureFormattingProvider.EXAMPLES_REGEX.test(nextNonEmpty)) {
+          } else if (FORMAT_EXAMPLES_REGEX.test(nextNonEmpty)) {
             tagIndent = inRule
               ? FeatureFormattingProvider.INDENT.EXAMPLES + 2
               : FeatureFormattingProvider.INDENT.EXAMPLES;
           }
         }
         formatted = this.formatTagLine(text, tagIndent, baseIndent, indentChar);
-      } else if (FeatureFormattingProvider.COMMENT_REGEX.test(text)) {
+      } else if (FORMAT_COMMENT_REGEX.test(text)) {
         // Comments - preserve relative position but trim trailing whitespace
         formatted = text.trimEnd();
       } else {
@@ -261,7 +261,7 @@ export class FeatureFormattingProvider
   ): string | null {
     for (let i = startLine; i <= Math.min(endLine, document.lineCount - 1); i++) {
       const text = document.lineAt(i).text;
-      if (!FeatureFormattingProvider.EMPTY_REGEX.test(text)) {
+      if (!FORMAT_EMPTY_REGEX.test(text)) {
         return text;
       }
     }
@@ -279,7 +279,7 @@ export class FeatureFormattingProvider
 
     for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
       const text = document.lineAt(lineNum).text;
-      const isTableLine = FeatureFormattingProvider.TABLE_REGEX.test(text);
+      const isTableLine = FORMAT_TABLE_REGEX.test(text);
 
       if (isTableLine) {
         if (!currentSection) {

@@ -135,3 +135,65 @@ export const DEFAULT_PLACEHOLDER_FRAGMENT = ".+";
  * Regex fragment for Scenario Outline placeholders like <name>.
  */
 export const OUTLINE_PLACEHOLDER_FRAGMENT = "<[^>]+>";
+
+// ============================================================================
+// Gherkin Formatting Patterns
+// These patterns are used by the formatting provider to identify line types.
+// Groups: 1=leading whitespace (for all patterns)
+// ============================================================================
+
+/**
+ * Regex to match Feature keyword line.
+ */
+export const FORMAT_FEATURE_REGEX = /^(\s*)Feature:/i;
+
+/**
+ * Regex to match Rule keyword line.
+ */
+export const FORMAT_RULE_REGEX = /^(\s*)Rule:/i;
+
+/**
+ * Regex to match Background keyword line.
+ */
+export const FORMAT_BACKGROUND_REGEX = /^(\s*)Background:/i;
+
+/**
+ * Regex to match Scenario or Scenario Outline keyword line.
+ */
+export const FORMAT_SCENARIO_REGEX = /^(\s*)Scenario(?: Outline)?:/i;
+
+/**
+ * Regex to match Examples keyword line.
+ */
+export const FORMAT_EXAMPLES_REGEX = /^(\s*)Examples:/i;
+
+/**
+ * Regex to match step keywords with leading whitespace.
+ * Groups: 1=whitespace, 2=keyword
+ */
+export const FORMAT_STEP_REGEX = /^(\s*)(Given|When|Then|And|But|\*)\s+/i;
+
+/**
+ * Regex to match tag lines.
+ */
+export const FORMAT_TAG_REGEX = /^(\s*)@/;
+
+/**
+ * Regex to match table rows (lines starting with |).
+ */
+export const FORMAT_TABLE_REGEX = /^(\s*)\|/;
+
+/**
+ * Regex to match doc string delimiters (triple quotes).
+ */
+export const FORMAT_DOC_STRING_REGEX = /^(\s*)(""")/;
+
+/**
+ * Regex to match comment lines.
+ */
+export const FORMAT_COMMENT_REGEX = /^(\s*)#/;
+
+/**
+ * Regex to match empty or whitespace-only lines.
+ */
+export const FORMAT_EMPTY_REGEX = /^\s*$/;
