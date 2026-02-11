@@ -1,7 +1,7 @@
 {
     "name": "behave-runner",
     "displayName": "Behave Runner",
-    "description": "Run, debug, and navigate Behave scenarios with CodeLens, Go to Definition, step autocomplete, and more.",
+    "description": "Run, debug, format, and navigate Behave scenarios with CodeLens, Go to Definition, step autocomplete, diagnostics, and more.",
     "version": "1.11.1",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
@@ -14,7 +14,9 @@
     },
     "categories": [
         "Testing",
-        "Programming Languages"
+        "Programming Languages",
+        "Formatters",
+        "Linters"
     ],
     "keywords": [
         "behave",
@@ -23,7 +25,11 @@
         "cucumber",
         "feature",
         "python",
-        "test"
+        "test",
+        "scenario",
+        "step definitions",
+        "formatter",
+        "autocomplete"
     ],
     "activationEvents": [
         "workspaceContains:**/*.feature"
