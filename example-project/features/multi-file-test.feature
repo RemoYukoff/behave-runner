@@ -93,6 +93,17 @@ Feature: Multi-File Step Reference Test
     Then the result contains 42 matches
 
   # =========================================================================
+  # Dual definition test: @given + @step with same pattern
+  # When Ctrl+Click on these steps, VS Code should show both definitions
+  # since both @given("a logged in user") and @step("a logged in user") exist.
+  # =========================================================================
+
+  Scenario: Dual definition step - shows multiple Go to Definition options
+    Given a logged in user
+    And the system is ready
+    Then the system is ready
+
+  # =========================================================================
   # Unique scenarios for this file (to test file isolation)
   # =========================================================================
 

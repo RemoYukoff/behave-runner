@@ -98,6 +98,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   pythonWatcher.onDidDelete(() => diagnosticsProvider.refreshAll());
   context.subscriptions.push(pythonWatcher);
 
+  // Rescan when configuration changes
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(async (e) => {
+      if (e.affectsConfiguration("behaveRunner.stepDefinitions.patterns")) {
+        logger.info("Step definitions patterns changed, rescanning...");
+        await stepScanner.rescan();
+        diagnosticsProvider.refreshAll();
+        logger.info(`Rescan complete: ${stepScanner.getAllDefinitions().length} definitions`);
+      }
+      if (e.affectsConfiguration("behaveRunner.featureFiles.patterns")) {
+        logger.info("Feature files patterns changed, rescanning...");
+        await featureScanner.rescan();
+        logger.info(`Rescan complete: ${featureScanner.getAllSteps().length} steps`);
+      }
+    })
+  );
+
   // Clear definition cache when documents close to prevent memory leaks
   context.subscriptions.push(
     vscode.workspace.onDidCloseTextDocument(() => {
