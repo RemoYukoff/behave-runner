@@ -293,9 +293,11 @@ function spawnBehave(
     liveFormatterPythonRoot: string | undefined;
   }
 ): cp.ChildProcessWithoutNullStreams {
-  const behaveArgs: string[] = ["-f", "json", "-o", jsonReportPath];
+  // Behave captures step stdout by default; prints never reach this process or the live NDJSON stream.
+  const behaveArgs: string[] = ["--no-capture-stdout", "-f", "json", "-o", jsonReportPath];
   if (opts.liveStream && opts.liveFormatterPythonRoot) {
-    behaveArgs.push("-f", "behave_runner_live:BehaveRunnerLiveFormatter");
+    // Avoid Behave's plain-text summary on stdout (mixed with NDJSON / step prints).
+    behaveArgs.push("--no-summary", "-f", "behave_runner_live:BehaveRunnerLiveFormatter");
   }
   if (opts.includePlainToStdout && !opts.liveStream) {
     behaveArgs.push(
