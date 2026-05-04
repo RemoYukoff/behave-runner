@@ -2,8 +2,6 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import { FeatureStep, StepKeyword } from "./types";
 import { behavePatternToRegex, parseStepLine } from "./stepMatcher";
-import { STRUCTURAL_KEYWORD_REGEX, STEP_KEYWORD_REGEX } from "./constants";
-import { logger } from "./logger";
 
 /**
  * Scans .feature files in the workspace for steps.
@@ -102,22 +100,17 @@ export class FeatureScanner {
    */
   private async scanAllFiles(): Promise<void> {
     const patterns = this.getPatterns();
-    logger.debug("Scanning for feature files with patterns:", patterns);
 
-    let totalFiles = 0;
     for (const pattern of patterns) {
       const files = await vscode.workspace.findFiles(
         pattern,
         "**/node_modules/**"
       );
-      logger.debug(`Pattern "${pattern}" matched ${files.length} feature files`);
 
       for (const file of files) {
         await this.scanFile(file.fsPath);
-        totalFiles++;
       }
     }
-    logger.debug(`Scanned ${totalFiles} feature files`);
   }
 
   /**
@@ -128,11 +121,8 @@ export class FeatureScanner {
       const content = await fs.promises.readFile(filePath, "utf-8");
       const steps = this.parseFileContent(filePath, content);
       this.steps.set(filePath, steps);
-      if (steps.length > 0) {
-        logger.debug(`Found ${steps.length} steps in ${filePath}`);
-      }
-    } catch (err) {
-      logger.warn(`Failed to scan feature file ${filePath}:`, err);
+    } catch (error) {
+      // File might have been deleted or is inaccessible
       this.steps.delete(filePath);
     }
   }
@@ -149,7 +139,7 @@ export class FeatureScanner {
       const line = lines[lineIndex];
 
       // Check for Scenario/Feature which reset the keyword context
-      if (STRUCTURAL_KEYWORD_REGEX.test(line)) {
+      if (line.match(/^\s*(Feature|Scenario|Scenario Outline|Background|Examples):/i)) {
         previousKeyword = null;
         continue;
       }
@@ -157,8 +147,8 @@ export class FeatureScanner {
       const stepInfo = parseStepLine(line, previousKeyword);
       if (stepInfo) {
         // Calculate character position where the step text starts
-        const keywordMatch = line.match(STEP_KEYWORD_REGEX);
-        const character = keywordMatch ? keywordMatch[0].length - keywordMatch[2].length : 0;
+        const keywordMatch = line.match(/^\s*(Given|When|Then|And|But)\s+/i);
+        const character = keywordMatch ? keywordMatch[0].length : 0;
 
         steps.push({
           text: stepInfo.text,

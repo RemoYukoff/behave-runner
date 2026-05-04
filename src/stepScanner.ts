@@ -1,10 +1,33 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
-import { minimatch } from "minimatch";
 import { StepDefinition, StepKeyword } from "./types";
 import { behavePatternToRegex } from "./stepMatcher";
-import { DECORATOR_REGEXES } from "./constants";
-import { logger } from "./logger";
+
+/**
+ * Regex to match Behave step decorators in Python files with double quotes.
+ * Matches: @given("pattern"), @when("pattern"), @then(u"pattern"), @step("pattern")
+ */
+const DECORATOR_REGEX_DOUBLE =
+  /^(\s*)@(given|when|then|step)\s*\(\s*(?:u?r?)?"((?:[^"\\]|\\.)*)"\s*\)/gim;
+
+/**
+ * Regex to match Behave step decorators in Python files with single quotes.
+ * Matches: @given('pattern'), @when('pattern'), @then(u'pattern'), @step('pattern')
+ */
+const DECORATOR_REGEX_SINGLE =
+  /^(\s*)@(given|when|then|step)\s*\(\s*(?:u?r?)?'((?:[^'\\]|\\.)*)'\s*\)/gim;
+
+/**
+ * Alternative regex for decorators with regex patterns: @given(re.compile(r"..."))
+ */
+const DECORATOR_REGEX_COMPILE_DOUBLE =
+  /^(\s*)@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?"((?:[^"\\]|\\.)*)"/gim;
+
+/**
+ * Alternative regex for decorators with regex patterns: @given(re.compile(r'...'))
+ */
+const DECORATOR_REGEX_COMPILE_SINGLE =
+  /^(\s*)@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?'((?:[^'\\]|\\.)*)'/gim;
 
 /**
  * Scans Python files in the workspace for Behave step definitions.
@@ -84,22 +107,17 @@ export class StepScanner {
    */
   private async scanAllFiles(): Promise<void> {
     const patterns = this.getPatterns();
-    logger.debug("Scanning for step definitions with patterns:", patterns);
 
-    let totalFiles = 0;
     for (const pattern of patterns) {
       const files = await vscode.workspace.findFiles(
         pattern,
         "**/node_modules/**"
       );
-      logger.debug(`Pattern "${pattern}" matched ${files.length} files`);
 
       for (const file of files) {
         await this.scanFile(file.fsPath);
-        totalFiles++;
       }
     }
-    logger.debug(`Scanned ${totalFiles} Python files`);
   }
 
   /**
@@ -110,11 +128,8 @@ export class StepScanner {
       const content = await fs.promises.readFile(filePath, "utf-8");
       const definitions = this.parseFileContent(filePath, content);
       this.definitions.set(filePath, definitions);
-      if (definitions.length > 0) {
-        logger.debug(`Found ${definitions.length} step definitions in ${filePath}`);
-      }
-    } catch (err) {
-      logger.warn(`Failed to scan file ${filePath}:`, err);
+    } catch (error) {
+      // File might have been deleted or is inaccessible
       this.definitions.delete(filePath);
     }
   }
@@ -130,13 +145,17 @@ export class StepScanner {
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
 
-      // Try all decorator patterns
-      let match: { keyword: string; pattern: string; character: number } | null = null;
-      for (const regex of DECORATOR_REGEXES) {
-        match = this.matchDecorator(line, regex);
-        if (match) {
-          break;
-        }
+      // Try standard decorator patterns (double quotes, then single quotes)
+      let match = this.matchDecorator(line, DECORATOR_REGEX_DOUBLE);
+      if (!match) {
+        match = this.matchDecorator(line, DECORATOR_REGEX_SINGLE);
+      }
+      if (!match) {
+        // Try re.compile patterns
+        match = this.matchDecorator(line, DECORATOR_REGEX_COMPILE_DOUBLE);
+      }
+      if (!match) {
+        match = this.matchDecorator(line, DECORATOR_REGEX_COMPILE_SINGLE);
       }
 
       if (match) {
@@ -171,7 +190,10 @@ export class StepScanner {
     line: string,
     regex: RegExp
   ): { keyword: string; pattern: string; character: number } | null {
-    const match = line.match(regex);
+    // Reset regex state
+    regex.lastIndex = 0;
+
+    const match = regex.exec(line);
     if (!match) {
       return null;
     }
@@ -225,13 +247,39 @@ export class StepScanner {
       return true;
     }
 
-    // Normalize path for cross-platform matching
-    const normalizedPath = filePath.replace(/\\/g, "/");
+    // Check against configured patterns using simple string matching
     const patterns = this.getPatterns();
+    const lowerPath = filePath.toLowerCase().replace(/\\/g, "/");
 
-    return patterns.some((pattern) =>
-      minimatch(normalizedPath, pattern, { nocase: true, matchBase: true })
-    );
+    for (const pattern of patterns) {
+      // Convert glob pattern to simple checks
+      const lowerPattern = pattern.toLowerCase();
+
+      if (lowerPattern.includes("**/steps/**")) {
+        if (lowerPath.includes("/steps/")) {
+          return true;
+        }
+      } else if (lowerPattern.endsWith("_steps.py")) {
+        if (lowerPath.endsWith("_steps.py")) {
+          return true;
+        }
+      } else if (lowerPattern.includes("step_")) {
+        if (lowerPath.includes("step_") && lowerPath.endsWith(".py")) {
+          return true;
+        }
+      } else if (lowerPattern.endsWith("steps.py")) {
+        if (lowerPath.endsWith("steps.py")) {
+          return true;
+        }
+      } else if (lowerPattern.endsWith(".py")) {
+        // Generic pattern - check if it's a Python file
+        if (lowerPath.endsWith(".py")) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 }
 

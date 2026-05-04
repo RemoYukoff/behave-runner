@@ -5,5 +5,6 @@ out/
 .DS_Store
 .vscode/
 .venv/
+.idea/
 __pycache__/
 example-project/.venv/

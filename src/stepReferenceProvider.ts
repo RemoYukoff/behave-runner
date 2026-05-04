@@ -1,7 +1,25 @@
 import * as vscode from "vscode";
 import { getFeatureScanner } from "./featureScanner";
 import { StepKeyword } from "./types";
-import { isFunctionDefinition, findDecoratorsAbove } from "./decoratorParser";
+
+/**
+ * Regex patterns to match Behave step decorators in Python files.
+ */
+const DECORATOR_PATTERNS = [
+  // @given("pattern"), @when("pattern"), @then("pattern"), @step("pattern")
+  /^\s*@(given|when|then|step)\s*\(\s*(?:u?r?)?"((?:[^"\\]|\\.)*)"\s*\)/i,
+  // @given('pattern'), @when('pattern'), @then('pattern'), @step('pattern')
+  /^\s*@(given|when|then|step)\s*\(\s*(?:u?r?)?'((?:[^'\\]|\\.)*)'\s*\)/i,
+  // @given(re.compile(r"..."))
+  /^\s*@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?"((?:[^"\\]|\\.)*)"/i,
+  // @given(re.compile(r'...'))
+  /^\s*@(given|when|then|step)\s*\(\s*re\.compile\s*\(\s*r?'((?:[^'\\]|\\.)*)'/i,
+];
+
+/**
+ * Regex to match a Python function definition.
+ */
+const FUNCTION_DEF_REGEX = /^\s*def\s+(\w+)\s*\(/;
 
 /**
  * Provides references for Behave step functions in Python files.
@@ -21,12 +39,12 @@ export class BehaveReferenceProvider implements vscode.ReferenceProvider {
     const line = document.lineAt(position.line);
 
     // Check if cursor is on a function definition
-    if (!isFunctionDefinition(line.text)) {
+    if (!FUNCTION_DEF_REGEX.test(line.text)) {
       return null;
     }
 
     // Look backwards to find step decorators above the function
-    const decorators = findDecoratorsAbove(document, position.line);
+    const decorators = this.findDecoratorsAbove(document, position.line);
 
     if (decorators.length === 0) {
       return null;
@@ -59,5 +77,64 @@ export class BehaveReferenceProvider implements vscode.ReferenceProvider {
     }
 
     return locations;
+  }
+
+  /**
+   * Find step decorators above a function definition.
+   * Scans upward from the function line to find @given/@when/@then/@step decorators.
+   */
+  private findDecoratorsAbove(
+    document: vscode.TextDocument,
+    functionLine: number
+  ): Array<{ keyword: string; pattern: string }> {
+    const decorators: Array<{ keyword: string; pattern: string }> = [];
+
+    // Scan backwards from the line above the function
+    for (let i = functionLine - 1; i >= 0; i--) {
+      const lineText = document.lineAt(i).text;
+
+      // Skip empty lines and comments between decorators
+      if (lineText.match(/^\s*(#.*)?$/)) {
+        continue;
+      }
+
+      // Check if it's a step decorator
+      const decoratorInfo = this.extractDecoratorInfo(lineText);
+      if (decoratorInfo) {
+        decorators.push(decoratorInfo);
+        continue;
+      }
+
+      // If we hit any other line (another decorator, code, etc.), stop searching
+      // But allow other decorators (non-step) to be skipped
+      if (lineText.match(/^\s*@\w+/)) {
+        // It's a decorator but not a step decorator, continue looking
+        continue;
+      }
+
+      // Hit something else (previous function, class, etc.), stop
+      break;
+    }
+
+    return decorators;
+  }
+
+  /**
+   * Extract decorator information from a line of Python code.
+   * Returns the keyword and pattern if the line contains a step decorator.
+   */
+  private extractDecoratorInfo(
+    lineText: string
+  ): { keyword: string; pattern: string } | null {
+    for (const regex of DECORATOR_PATTERNS) {
+      const match = lineText.match(regex);
+      if (match) {
+        return {
+          keyword: match[1].toLowerCase(),
+          pattern: match[2],
+        };
+      }
+    }
+    return null;
   }
 }

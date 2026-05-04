@@ -6,9 +6,6 @@ import {
   resolveEffectiveKeyword,
 } from "./stepMatcher";
 import { StepKeyword } from "./types";
-import { isInsideDocString } from "./utils";
-import { REGEX_SPECIAL_CHARS } from "./constants";
-import { logger } from "./logger";
 
 /**
  * Cache entry for a line's definition lookup result.
@@ -110,12 +107,6 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
 
     // Parse the step from the current line
     const lines = document.getText().split("\n");
-
-    // Check if we're inside a doc string block - if so, ignore
-    if (isInsideDocString(lines, position.line)) {
-      return { locationLinks: null, originRange: null };
-    }
-
     const effectiveKeyword = resolveEffectiveKeyword(lines, position.line);
 
     const stepInfo = parseStepLine(lineText, effectiveKeyword);
@@ -151,11 +142,8 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
     );
 
     if (matchingDefs.length === 0) {
-      logger.debug(`No matching definition found for step: "${stepInfo.text}"`);
       return { locationLinks: null, originRange };
     }
-
-    logger.debug(`Found ${matchingDefs.length} definition(s) for step: "${stepInfo.text}"`);
 
     // Return LocationLinks for all matches
     const locationLinks: vscode.LocationLink[] = matchingDefs.map((def) => {
@@ -191,12 +179,9 @@ export class BehaveDefinitionProvider implements vscode.DefinitionProvider {
   ): vscode.Range | null {
     const lineText = line.text;
 
-    // Escape special regex characters in keyword (e.g., * becomes \*)
-    const escapedKeyword = keyword.replace(REGEX_SPECIAL_CHARS, "\\$&");
-
     // Find the keyword position
     const keywordMatch = lineText.match(
-      new RegExp(`^(\\s*)(${escapedKeyword})\\s+`, "i")
+      new RegExp(`^(\\s*)(${keyword})\\s+`, "i")
     );
 
     if (!keywordMatch) {

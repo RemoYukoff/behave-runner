@@ -1,8 +1,8 @@
 {
     "name": "behave-runner",
     "displayName": "Behave Runner",
-    "description": "Run, debug, format, and navigate Behave scenarios with CodeLens, Go to Definition, step autocomplete, diagnostics, and more.",
-    "version": "1.11.4",
+    "description": "Run Behave from CodeLens in .feature files and the Live run panel (run/debug), with Go to Definition, step autocomplete, and more.",
+    "version": "1.7.0",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
     "repository": {
@@ -14,9 +14,7 @@
     },
     "categories": [
         "Testing",
-        "Programming Languages",
-        "Formatters",
-        "Linters"
+        "Programming Languages"
     ],
     "keywords": [
         "behave",
@@ -25,11 +23,7 @@
         "cucumber",
         "feature",
         "python",
-        "test",
-        "scenario",
-        "step definitions",
-        "formatter",
-        "autocomplete"
+        "test"
     ],
     "activationEvents": [
         "workspaceContains:**/*.feature"
@@ -58,14 +52,65 @@
         ],
         "commands": [
             {
-                "command": "behaveRunner.runScenario",
-                "title": "Run Behave Scenario"
-            },
-            {
                 "command": "behaveRunner.debugScenario",
                 "title": "Debug Behave Scenario"
+            },
+            {
+                "command": "behaveRunner.showLiveRun",
+                "title": "Behave Runner: Show Live Run View"
+            },
+            {
+                "command": "behaveRunner.editor.runFeature",
+                "title": "Behave Runner: Run Feature"
+            },
+            {
+                "command": "behaveRunner.editor.debugFeature",
+                "title": "Behave Runner: Debug Feature"
+            },
+            {
+                "command": "behaveRunner.editor.runBackground",
+                "title": "Behave Runner: Run Background"
+            },
+            {
+                "command": "behaveRunner.editor.debugBackground",
+                "title": "Behave Runner: Debug Background"
+            },
+            {
+                "command": "behaveRunner.editor.runScenario",
+                "title": "Behave Runner: Run Scenario"
+            },
+            {
+                "command": "behaveRunner.editor.debugScenario",
+                "title": "Behave Runner: Debug Scenario (editor)"
+            },
+            {
+                "command": "behaveRunner.editor.runScenarioOutline",
+                "title": "Behave Runner: Run Scenario Outline (all examples)"
+            },
+            {
+                "command": "behaveRunner.editor.debugScenarioOutline",
+                "title": "Behave Runner: Debug Scenario Outline (all examples)"
             }
         ],
+        "viewsContainers": {
+            "panel": [
+                {
+                    "id": "behaveRunnerExecutionPanel",
+                    "title": "Behave",
+                    "icon": "media/behave-activity.svg"
+                }
+            ]
+        },
+        "views": {
+            "behaveRunnerExecutionPanel": [
+                {
+                    "type": "webview",
+                    "id": "behaveRunner.liveRun",
+                    "name": "Live run",
+                    "visibility": "visible"
+                }
+            ]
+        },
         "configuration": {
             "title": "Behave Runner",
             "properties": {
@@ -73,6 +118,16 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Only debug user code when running Behave in debug mode."
+                },
+                "behaveRunner.run.showBehaveRawOutput": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Also run the plain formatter to stdout (in addition to the JSON report). Ignored while live stream is enabled (stdout is reserved for NDJSON)."
+                },
+                "behaveRunner.run.liveStream": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Stream step progress in real time using the bundled Behave formatter (NDJSON on stdout). Final pass/fail still uses the JSON report. Requires Behave with Formatter API (e.g. >= 1.2.6)."
                 },
                 "behaveRunner.stepDefinitions.patterns": {
                     "type": "array",
@@ -96,54 +151,19 @@
                         "**/*.feature"
                     ],
                     "description": "Glob patterns for Gherkin feature files."
-                },
-                "behaveRunner.logLevel": {
-                    "type": "string",
-                    "enum": [
-                        "debug",
-                        "info",
-                        "warn",
-                        "error"
-                    ],
-                    "default": "info",
-                    "description": "Log level for the Behave Runner output channel."
-                },
-                "behaveRunner.additionalArgs": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "default": [],
-                    "description": "Additional command-line arguments to pass to Behave (e.g., --no-capture, --no-capture-stderr, --tags)."
                 }
             }
         }
     },
     "scripts": {
-        "compile": "node esbuild.mjs",
-        "compile:prod": "node esbuild.mjs --production",
-        "watch": "node esbuild.mjs --watch",
-        "vscode:prepublish": "npm run compile:prod",
-        "typecheck": "tsc -p ./ --noEmit",
-        "lint": "eslint src",
-        "lint:fix": "eslint src --fix",
-        "dead-code": "knip",
-        "duplicates": "jscpd src",
-        "analyze": "npm run typecheck && npm run lint && npm run dead-code && npm run duplicates"
+        "compile": "tsc -p ./",
+        "watch": "tsc -watch -p ./",
+        "vscode:prepublish": "npm run compile"
     },
     "devDependencies": {
-        "@eslint/js": "^9.39.2",
         "@types/node": "^20.0.0",
         "@types/vscode": "^1.85.0",
-        "esbuild": "^0.27.3",
-        "eslint": "^9.39.2",
-        "jscpd": "^4.0.8",
-        "knip": "^5.83.1",
-        "typescript": "^5.0.0",
-        "typescript-eslint": "^8.55.0"
+        "typescript": "^5.0.0"
     },
-    "license": "MIT",
-    "dependencies": {
-        "minimatch": "^9.0.5"
-    }
+    "license": "MIT"
 }

@@ -1,5 +1,7 @@
 from behave import given, when, then
 
+from debug_output import emit
+
 
 # =============================================================================
 # Steps with special regex characters
@@ -7,16 +9,19 @@ from behave import given, when, then
 
 @given("a file named {filename} exists")
 def step_given_file(context, filename):
+    emit("step_given_file", filename=filename)
     context.filename = filename
 
 
 @when("I search for pattern {pattern}")
 def step_when_search(context, pattern):
+    emit("step_when_search", pattern=pattern)
     context.pattern = pattern
 
 
 @then("the result contains {count:d} matches")
 def step_then_matches(context, count):
+    emit("step_then_matches", count=count)
     context.match_count = count
 
 
@@ -26,11 +31,13 @@ def step_then_matches(context, count):
 
 @given('the message is "{message}"')
 def step_given_message_double(context, message):
+    emit("step_given_message_double", message=message)
     context.message = message
 
 
 @then('the output shows "{expected}"')
 def step_then_output_double(context, expected):
+    emit("step_then_output_double", expected=expected)
     assert context.message == expected
 
 
@@ -40,11 +47,13 @@ def step_then_output_double(context, expected):
 
 @given("the message is '{message}'")
 def step_given_message_single(context, message):
+    emit("step_given_message_single", message=message)
     context.message = message
 
 
 @then("the output shows '{expected}'")
 def step_then_output_single(context, expected):
+    emit("step_then_output_single", expected=expected)
     assert context.message == expected
 
 
@@ -56,24 +65,12 @@ def step_then_output_single(context, expected):
 @given('the value is "{value}"')
 @given("the value is '{value}'")
 def step_given_value(context, value):
+    emit("step_given_value", value=value)
     context.value = value
 
 
 @then('the value equals "{expected}"')
 @then("the value equals '{expected}'")
 def step_then_value_equals(context, expected):
+    emit("step_then_value_equals", expected=expected)
     assert context.value == expected
-
-
-# =============================================================================
-# Steps with doc strings (triple quoted text blocks)
-# =============================================================================
-
-@given("a sample text loaded into the system")
-def step_given_sample_text(context):
-    context.text_content = context.text
-
-
-@then("the system processes the text")
-def step_then_process_text(context):
-    assert context.text_content is not None

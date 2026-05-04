@@ -6,11 +6,12 @@ A VS Code extension for running, debugging, and navigating Behave (Python BDD) s
 
 ### Run & Debug Scenarios
 
-Run or debug Behave scenarios directly from your `.feature` files using CodeLens.
+Use the **Testing** view and the **gutter** next to `Feature:` / `Scenario:` lines in `.feature` files.
 
-- **Run Scenario**: Click the play button above any `Scenario` or `Scenario Outline`
-- **Debug Scenario**: Click the bug button to start a debugging session
-- **Run Feature**: Run all scenarios in a feature file
+- **Left-click** the gutter icon → run with the selected **Run** profile (Behave in Test Results).
+- **Right-click** the gutter icon → context menu with **Run**, **Debug**, **Reveal in Test Explorer**, etc.
+- Expand tests in the Testing sidebar to run or debug a whole feature or a single scenario.
+- **Test Results** output is grouped under each feature, scenario, and step (not a flat Behave log). Set `behaveRunner.run.showBehaveRawOutput` to `true` if you need the full Behave stream.
 
 ### Go to Step Definition
 
@@ -37,17 +38,6 @@ Start typing a step after `Given`, `When`, `Then`, `And`, or `But` and get autoc
 
 Get real-time warnings for steps in `.feature` files that don't have a matching Python definition. Undefined steps are highlighted with a yellow underline.
 
-### Document Formatting
-
-Format your `.feature` files with proper Gherkin indentation and table alignment.
-
-- **Format Document**: Use `Shift+Alt+F` (or `Shift+Option+F` on Mac) to format the entire file
-- **Format Selection**: Select a range and format just that section
-- Proper indentation for `Feature`, `Scenario`, steps, and tables
-- Automatic table column alignment
-- Tag and doc string formatting
-- Supports `Rule` keyword with nested indentation
-
 ### Syntax Highlighting
 
 Full syntax highlighting for `.feature` files including keywords, strings, comments, tags, and data tables.
@@ -59,24 +49,6 @@ Full syntax highlighting for `.feature` files including keywords, strings, comme
 | `behaveRunner.debug.justMyCode` | Only debug user code (skip library code) | `true` |
 | `behaveRunner.stepDefinitions.patterns` | Glob patterns for Python step definition files | `["**/steps/**/*.py", "**/*_steps.py", "**/step_*.py", "**/steps.py"]` |
 | `behaveRunner.featureFiles.patterns` | Glob patterns for Gherkin feature files | `["**/*.feature"]` |
-| `behaveRunner.additionalArgs` | Additional command-line arguments to pass to Behave | `[]` |
-
-### Example: Additional Arguments
-
-To disable output capturing (useful for debugging with print statements):
-
-```json
-{
-  "behaveRunner.additionalArgs": ["--no-capture", "--no-capture-stderr"]
-}
-```
-
-Common Behave arguments:
-- `--no-capture` - Don't capture stdout
-- `--no-capture-stderr` - Don't capture stderr
-- `--tags=@smoke` - Run only scenarios with specific tags
-- `--dry-run` - Invokes formatters without running steps
-- `--no-skipped` - Don't print skipped steps
 
 ## Requirements
 

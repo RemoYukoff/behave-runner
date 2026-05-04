@@ -1,3 +1,11 @@
+/** Arguments for `behaveRunner.debugScenario` (e.g. keybindings). */
+export type RunScenarioArgs = {
+  filePath: string;
+  scenarioName?: string;
+  runAll: boolean;
+  workspaceRoot: string;
+};
+
 /**
  * Supported Behave step keywords
  */
@@ -49,28 +57,4 @@ export interface FeatureStep {
   line: number;
   /** Character position where the step text starts (0-based) */
   character: number;
-}
-
-/**
- * Arguments passed to run/debug scenario commands
- */
-export interface RunScenarioArgs {
-  /** Absolute path to the .feature file */
-  filePath: string;
-  /** Name of the scenario to run (undefined for running all) */
-  scenarioName?: string;
-  /** Whether to run all scenarios in the feature file */
-  runAll: boolean;
-  /** Absolute path to the workspace root */
-  workspaceRoot: string;
-}
-
-/**
- * Information about the Python interpreter configuration
- */
-export interface InterpreterInfo {
-  /** Path to the Python interpreter, or undefined if not found */
-  path: string | undefined;
-  /** Source of the interpreter configuration */
-  source: "python.defaultInterpreterPath" | "python.pythonPath" | "none";
 }

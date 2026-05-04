@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+  <title>Behave Live run</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+    body {
+      font-family: var(--vscode-font-family, system-ui, "Segoe UI", sans-serif);
+      font-size: 12px;
+      color: var(--vscode-foreground, #cccccc);
+      box-sizing: border-box;
+      background: var(--vscode-editor-background, #1e1e1e);
+    }
+    .shell {
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      height: 100%;
+      padding: 4px 8px 6px 0;
+      box-sizing: border-box;
+      min-height: 0;
+    }
+    .pane-tree {
+      flex: 0 0 280px;
+      width: 280px;
+      min-width: 120px;
+      max-width: 85%;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #treeRoot {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 0 4px 4px 0;
+      -webkit-user-select: none;
+      user-select: none;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .splitter {
+      flex: 0 0 5px;
+      margin: 0 1px;
+      cursor: col-resize;
+      align-self: stretch;
+      background: transparent;
+      position: relative;
+      z-index: 2;
+      border-radius: 2px;
+    }
+    .splitter:hover {
+      background: var(--vscode-sash-hoverBorder, rgba(128, 128, 128, 0.35));
+    }
+    .splitter.is-dragging {
+      background: var(--vscode-focusBorder, rgba(0, 122, 204, 0.55));
+    }
+    .pane-console {
+      flex: 1 1 0;
+      min-width: 64px;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .console-out {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 6px 10px 8px;
+      overflow: auto;
+      box-sizing: border-box;
+      -webkit-user-select: text;
+      user-select: text;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--vscode-editor-font-family, Consolas, monospace);
+      font-size: var(--vscode-editor-font-size, 12px);
+      line-height: 1.45;
+      color: var(--vscode-editor-foreground, #d4d4d4);
+      background: var(--vscode-editor-background, #1e1e1e);
+      border: none;
+      border-radius: 0;
+    }
+    .console-out .console-line {
+      color: var(--vscode-editor-foreground, #d4d4d4);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--vscode-editor-font-family, Consolas, monospace);
+      font-size: var(--vscode-editor-font-size, 12px);
+    }
+    .console-out .console-err {
+      color: var(--vscode-errorForeground, #f48771);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--vscode-editor-font-family, Consolas, monospace);
+      font-size: var(--vscode-editor-font-size, 12px);
+    }
+    .tree-node {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      min-width: 0;
+    }
+    /* One .tree-children level = border-left 1px + padding-left 14px (must match JS TREE_CHILD_INDENT_PX). */
+    .tree-node > summary,
+    .tree-step {
+      --tree-bleed-left: 0px;
+      margin-left: calc(-1 * var(--tree-bleed-left));
+      width: calc(100% + var(--tree-bleed-left));
+      max-width: none;
+      box-sizing: border-box;
+      font-family: var(--vscode-font-family, system-ui, "Segoe UI", sans-serif);
+      font-size: var(--vscode-font-size, 12px);
+      font-weight: var(--vscode-font-weight, normal);
+      color: var(--vscode-foreground, #cccccc);
+    }
+    .tree-node > summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 3px 8px;
+      padding-left: calc(8px + var(--tree-bleed-left));
+      margin-top: 0;
+      margin-bottom: 0;
+      border-radius: 0;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    .tree-node > summary::-webkit-details-marker {
+      display: none;
+    }
+    .tree-chevron {
+      flex: 0 0 14px;
+      width: 14px;
+      height: 14px;
+      line-height: 14px;
+      text-align: center;
+      font-size: 8px;
+      color: var(--vscode-icon-foreground, var(--vscode-foreground, #cccccc));
+      opacity: 0.8;
+      transform: rotate(0deg);
+      transform-origin: 50% 50%;
+      transition: transform 0.12s ease;
+      cursor: pointer;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    details.tree-node[open] > summary > .tree-chevron {
+      transform: rotate(90deg);
+    }
+    .tree-node > summary:hover {
+      background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
+    }
+    .tree-row-icon {
+      flex: 0 0 18px;
+      width: 18px;
+      text-align: center;
+      font-family: var(--vscode-font-family, system-ui, "Segoe UI", sans-serif);
+      font-size: 13px;
+      line-height: 1.2;
+      flex-shrink: 0;
+    }
+    .tree-row-icon.icon-pass { color: var(--vscode-testing-iconPassed, #89d185); }
+    .tree-row-icon.icon-fail { color: var(--vscode-testing-iconFailed, #f48771); }
+    .tree-row-icon.icon-none {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .tree-row-label {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tree-children {
+      margin: 0;
+      padding: 0 0 0 14px;
+      border-left: 1px solid var(--vscode-tree-inactiveIndentGuidesStroke, rgba(128,128,128,0.35));
+      margin-left: 0;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      min-width: 0;
+    }
+    .tree-step {
+      margin-top: 0;
+      margin-bottom: 0;
+      margin-right: 0;
+      padding: 3px 8px;
+      padding-left: calc(8px + var(--tree-bleed-left));
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      border-radius: 0;
+      cursor: pointer;
+    }
+    .tree-step:hover {
+      background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.06));
+    }
+    /*
+      Scenario summary: chevron (14) + gap (4) + status icon (18) + gap (4) before the title.
+      Extra padding so step label lines up with scenario title (step row has its own status icon).
+    */
+    .tree-children.tree-steps > .tree-step {
+      padding-left: calc(8px + var(--tree-bleed-left) + 14px + 4px + 18px + 4px);
+    }
+    .tree-step.tree-step-fail .tree-row-label {
+      color: var(--vscode-errorForeground, #f48771);
+    }
+    .tree-item-selected {
+      background: var(--vscode-list-inactiveSelectionBackground, rgba(0, 122, 204, 0.25)) !important;
+      outline: 1px solid var(--vscode-focusBorder, rgba(0, 122, 204, 0.6));
+      outline-offset: -1px;
+      border-radius: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell" id="shell">
+    <div class="pane-tree" id="paneTree">
+      <div id="treeRoot"></div>
+    </div>
+    <div class="splitter" id="splitter" role="separator" aria-orientation="vertical"></div>
+    <div class="pane-console">
+      <pre class="console-out" id="consoleOut"></pre>
+    </div>
+  </div>
+  <script>
+    (function () {
+      try {
+        if (typeof acquireVsCodeApi === "function") {
+          acquireVsCodeApi();
+        }
+      } catch (e) {
+        /* not in VS Code webview (e.g. opened as file://) */
+      }
+      var shell = document.getElementById("shell");
+      var paneTree = document.getElementById("paneTree");
+      var splitter = document.getElementById("splitter");
+      var treeRoot = document.getElementById("treeRoot");
+      var consoleOut = document.getElementById("consoleOut");
+      var featureBody = null;
+      var currentScenarioSteps = null;
+      var logFeature = [];
+      var logByScenario = Object.create(null);
+      var logByStep = Object.create(null);
+      var stepHeadlineByKey = Object.create(null);
+      var stepErrorByKey = Object.create(null);
+      var selectedEl = null;
+      var anonStepSeq = 0;
+      /** Must match .tree-children: border-left 1px + padding-left 14px. */
+      var TREE_CHILD_INDENT_PX = 15;
+      /** Subtracted from step row bleed so selection does not extend as far left as feature/scenario (one status-icon column). */
+      var TREE_STEP_BLEED_REDUCE_PX = 18;
+
+      function applyTreeRowBleed(el, ancestorTreeChildDepth, bleedReducePx) {
+        var reduce = bleedReducePx || 0;
+        var raw = ancestorTreeChildDepth * TREE_CHILD_INDENT_PX - reduce;
+        var px = (raw > 0 ? raw : 0) + "px";
+        el.style.setProperty("--tree-bleed-left", px);
+      }
+
+      var TREE_W_KEY = "behaveRunner.liveRun.treeWidthPx";
+
+      var featureIconEl = null;
+      var scenarioIcons = Object.create(null);
+      var scenarioFailed = Object.create(null);
+      var scenarioHasPass = Object.create(null);
+
+      function applyTreeWidth(px) {
+        var w = Math.max(120, Math.min(px, shell.clientWidth - 80));
+        paneTree.style.flex = "0 0 " + w + "px";
+        paneTree.style.width = w + "px";
+      }
+
+      var savedW = localStorage.getItem(TREE_W_KEY);
+      if (savedW) {
+        var parsed = parseInt(savedW, 10);
+        if (!isNaN(parsed)) applyTreeWidth(parsed);
+      }
+
+      var dragStartX = 0;
+      var dragStartW = 0;
+      splitter.addEventListener("mousedown", function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        dragStartX = e.clientX;
+        dragStartW = paneTree.getBoundingClientRect().width;
+        splitter.classList.add("is-dragging");
+        document.body.style.cursor = "col-resize";
+        function onMove(e2) {
+          var dx = e2.clientX - dragStartX;
+          applyTreeWidth(dragStartW + dx);
+        }
+        function onUp() {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          splitter.classList.remove("is-dragging");
+          document.body.style.cursor = "";
+          localStorage.setItem(
+            TREE_W_KEY,
+            String(Math.round(paneTree.getBoundingClientRect().width))
+          );
+        }
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+
+      function setRowIcon(iconSpan, kind) {
+        iconSpan.className = "tree-row-icon icon-" + (kind || "none");
+        if (kind === "pass") iconSpan.textContent = String.fromCharCode(0x2713);
+        else if (kind === "fail") iconSpan.textContent = String.fromCharCode(0x2717);
+        else iconSpan.textContent = String.fromCharCode(0x2003);
+      }
+
+      function stepIsFail(status) {
+        var s = (status || "").toLowerCase();
+        return s === "failed" || s === "error" || s === "undefined";
+      }
+
+      function stepIsPassish(status) {
+        var s = (status || "").toLowerCase();
+        return s === "passed" || s === "pending";
+      }
+
+      function refreshScenarioIcon(sk) {
+        var icon = scenarioIcons[sk];
+        if (!icon) return;
+        if (scenarioFailed[sk]) setRowIcon(icon, "fail");
+        else if (scenarioHasPass[sk]) setRowIcon(icon, "pass");
+        else setRowIcon(icon, "none");
+      }
+
+      function refreshFeatureIcon() {
+        if (!featureIconEl) return;
+        var anyFail = false;
+        var anyPass = false;
+        for (var k in scenarioFailed) {
+          if (scenarioFailed[k]) anyFail = true;
+        }
+        for (var k2 in scenarioHasPass) {
+          if (scenarioHasPass[k2]) anyPass = true;
+        }
+        if (anyFail) setRowIcon(featureIconEl, "fail");
+        else if (anyPass) setRowIcon(featureIconEl, "pass");
+        else setRowIcon(featureIconEl, "none");
+      }
+
+      function clearSelectionVisual() {
+        if (selectedEl) {
+          selectedEl.classList.remove("tree-item-selected");
+          selectedEl = null;
+        }
+      }
+
+      function setSelected(el) {
+        clearSelectionVisual();
+        if (el) {
+          el.classList.add("tree-item-selected");
+          selectedEl = el;
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      /** Split plain log string into headline vs error tail (stderr / traceback). */
+      function splitHeuristicErrorTail(t) {
+        if (!t) return { head: "", err: "" };
+        var s = String(t).replace(/\r\n/g, "\n").replace(/^\n+/, "");
+        var m = s.match(
+          /^([\s\S]*?\n)(\s*(?:Traceback|During handling|AssertionError:|^Error:|\w+Error:)[\s\S]*)$/m
+        );
+        if (m && m[2] && m[2].trim()) {
+          return { head: m[1], err: m[2] };
+        }
+        var ix = s.indexOf("\n\nTraceback");
+        if (ix !== -1) {
+          return { head: s.slice(0, ix + 1), err: s.slice(ix + 2) };
+        }
+        return { head: s, err: "" };
+      }
+
+      function pushLogSegment(arr, plain, err) {
+        var p = plain || "";
+        var e = (err || "").trim();
+        if (!p && !e) return;
+        arr.push({ p: p, e: e });
+      }
+
+      function appendLastSegmentErr(arr, text) {
+        if (!arr || !arr.length || text == null || text === "") return;
+        var last = arr[arr.length - 1];
+        if (last && typeof last === "object" && "e" in last) {
+          last.e = (last.e || "") + text;
+        } else {
+          arr.push({ p: "", e: String(text) });
+        }
+      }
+
+      function renderLogSegments(parts) {
+        if (!parts || !parts.length) {
+          consoleOut.textContent = "";
+          return;
+        }
+        var html = "";
+        for (var i = 0; i < parts.length; i++) {
+          var seg = parts[i];
+          var head = "";
+          var err = "";
+          if (typeof seg === "string") {
+            var sp = splitHeuristicErrorTail(seg);
+            head = sp.head;
+            err = sp.err;
+          } else if (seg && typeof seg === "object") {
+            head = String(seg.p || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
+            err = String(seg.e || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
+          }
+          if (head) {
+            html += '<span class="console-line">' + escapeHtml(head) + "</span>";
+          }
+          if (err && err.trim()) {
+            html += '<span class="console-err">' + escapeHtml(err) + "</span>";
+          }
+        }
+        if (!html.trim()) {
+          consoleOut.textContent = "";
+          return;
+        }
+        consoleOut.innerHTML = html;
+        consoleOut.scrollTop = 0;
+      }
+
+      function showConsolePlain(text) {
+        var t = (text || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
+        if (!t.trim()) {
+          consoleOut.textContent = "";
+          return;
+        }
+        renderLogSegments([t]);
+      }
+
+      function showStepConsole(stepKey) {
+        var head = stepHeadlineByKey[stepKey];
+        var err = (stepErrorByKey[stepKey] || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
+        var joined = (logByStep[stepKey] || []).join("");
+        if (head == null || head === "") {
+          head = (joined.split("\n\n")[0] || "").trimEnd() + "\n";
+          if (head === "\n") head = "";
+        }
+        if (head != null && head !== "") {
+          head = String(head).replace(/^\n+/, "");
+        }
+        if (!err.trim()) {
+          renderLogSegments([joined || head]);
+          return;
+        }
+        if (!head) {
+          renderLogSegments([joined]);
+          return;
+        }
+        renderLogSegments([{ p: head, e: err }]);
+      }
+
+      function refreshConsoleIfLiveStepAppend() {
+        if (!selectedEl || !selectedEl.dataset) return;
+        var ds = selectedEl.dataset;
+        if (ds.logScope === "feature") {
+          renderLogSegments(logFeature);
+        } else if (ds.logScope === "scenario" && ds.scenarioKey) {
+          renderLogSegments(logByScenario[ds.scenarioKey] || []);
+        } else if (
+          selectedEl.classList &&
+          selectedEl.classList.contains("tree-step") &&
+          ds.stepKey
+        ) {
+          showStepConsole(ds.stepKey);
+        }
+      }
+
+      function bumpFeature(t) {
+        if (t) pushLogSegment(logFeature, t, "");
+      }
+
+      function bumpScenario(k, t) {
+        if (!k || !t) return;
+        if (!logByScenario[k]) logByScenario[k] = [];
+        pushLogSegment(logByScenario[k], t, "");
+      }
+
+      function bumpFeatureStepPart(plain, err) {
+        pushLogSegment(logFeature, plain, err);
+      }
+
+      function bumpScenarioStepPart(k, plain, err) {
+        if (!k) return;
+        if (!logByScenario[k]) logByScenario[k] = [];
+        pushLogSegment(logByScenario[k], plain, err);
+      }
+
+      function bumpStep(k, t) {
+        if (!k || !t) return;
+        if (!logByStep[k]) logByStep[k] = [];
+        logByStep[k].push(t);
+      }
+
+      function wireExpandableDetails(detailsEl, summaryEl, onSingleSelect) {
+        summaryEl.addEventListener("click", function (e) {
+          var raw = e.target;
+          var t = raw && raw.nodeType === 3 ? raw.parentElement : raw;
+          if (t && t.closest && t.closest(".tree-chevron")) {
+            e.preventDefault();
+            e.stopPropagation();
+            detailsEl.open = !detailsEl.open;
+            return;
+          }
+          e.preventDefault();
+          if (e.detail === 1) {
+            onSingleSelect();
+          }
+        });
+        summaryEl.addEventListener("dblclick", function (e) {
+          var raw = e.target;
+          var t = raw && raw.nodeType === 3 ? raw.parentElement : raw;
+          if (t && t.closest && t.closest(".tree-chevron")) {
+            return;
+          }
+          e.preventDefault();
+          detailsEl.open = !detailsEl.open;
+        });
+      }
+
+      function bindStepLine(line, stepKey) {
+        line.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          setSelected(line);
+          showStepConsole(stepKey);
+        });
+      }
+
+      function makeSummaryRow(labelText) {
+        var sum = document.createElement("summary");
+        var chev = document.createElement("span");
+        chev.className = "tree-chevron";
+        chev.setAttribute("aria-hidden", "true");
+        chev.textContent = String.fromCharCode(0x25b6);
+        var icon = document.createElement("span");
+        icon.className = "tree-row-icon icon-none";
+        icon.setAttribute("aria-hidden", "true");
+        setRowIcon(icon, "none");
+        var lab = document.createElement("span");
+        lab.className = "tree-row-label";
+        lab.textContent = labelText;
+        sum.appendChild(chev);
+        sum.appendChild(icon);
+        sum.appendChild(lab);
+        return { sum: sum, icon: icon };
+      }
+
+      function ensureFeatureBody(label) {
+        var details = document.createElement("details");
+        details.className = "tree-node tree-feature";
+        details.open = true;
+        var row = makeSummaryRow(label || "(feature)");
+        featureIconEl = row.icon;
+        var body = document.createElement("div");
+        body.className = "tree-children";
+        details.appendChild(row.sum);
+        details.appendChild(body);
+        treeRoot.appendChild(details);
+        featureBody = body;
+        currentScenarioSteps = null;
+        row.sum.dataset.logScope = "feature";
+        wireExpandableDetails(details, row.sum, function () {
+          setSelected(row.sum);
+          renderLogSegments(logFeature);
+        });
+      }
+
+      window.addEventListener("message", function (e) {
+        var m = e.data;
+        if (!m || typeof m !== "object") return;
+        if (m.type === "clear") {
+          treeRoot.innerHTML = "";
+          featureBody = null;
+          currentScenarioSteps = null;
+          logFeature.length = 0;
+          logByScenario = Object.create(null);
+          logByStep = Object.create(null);
+          stepHeadlineByKey = Object.create(null);
+          stepErrorByKey = Object.create(null);
+          selectedEl = null;
+          anonStepSeq = 0;
+          featureIconEl = null;
+          scenarioIcons = Object.create(null);
+          scenarioFailed = Object.create(null);
+          scenarioHasPass = Object.create(null);
+          consoleOut.textContent = "";
+          return;
+        }
+        if (m.type === "feature") {
+          ensureFeatureBody(m.label);
+          treeRoot.scrollTop = 0;
+          return;
+        }
+        if (m.type === "scenario") {
+          if (!featureBody) ensureFeatureBody("(feature)");
+          var logLine = m.logLine || ("━━ " + (m.name || "(scenario)") + " ━━\n");
+          bumpFeature(logLine);
+          var sk = m.key;
+          if (sk) bumpScenario(sk, logLine);
+
+          var sdet = document.createElement("details");
+          sdet.className = "tree-node tree-scenario";
+          sdet.open = false;
+          var srow = makeSummaryRow(m.name || "(scenario)");
+          applyTreeRowBleed(srow.sum, 1);
+          var sbody = document.createElement("div");
+          sbody.className = "tree-children tree-steps";
+          sdet.appendChild(srow.sum);
+          sdet.appendChild(sbody);
+          featureBody.appendChild(sdet);
+          currentScenarioSteps = sbody;
+          var selectKey = sk || "__scenario_nokey__";
+          if (!sk) bumpScenario(selectKey, logLine);
+          if (sk) {
+            scenarioIcons[sk] = srow.icon;
+            scenarioFailed[sk] = false;
+            scenarioHasPass[sk] = false;
+            setRowIcon(srow.icon, "none");
+          }
+          srow.sum.dataset.logScope = "scenario";
+          srow.sum.dataset.scenarioKey = selectKey;
+          wireExpandableDetails(sdet, srow.sum, function () {
+            setSelected(srow.sum);
+            renderLogSegments(logByScenario[selectKey] || []);
+          });
+          return;
+        }
+        if (m.type === "step_log_append") {
+          var apk = m.stepKey;
+          var ask = m.scenarioKey;
+          var atext = m.text;
+          if (!apk || atext == null || atext === "") return;
+          appendLastSegmentErr(logFeature, atext);
+          if (ask) appendLastSegmentErr(logByScenario[ask], atext);
+          bumpStep(apk, atext);
+          stepErrorByKey[apk] = (stepErrorByKey[apk] || "") + atext;
+          refreshConsoleIfLiveStepAppend();
+          return;
+        }
+        if (m.type === "step") {
+          var sk = m.scenarioKey || "__orphan__";
+          var stepKey = m.stepKey || ("anon-step-" + (++anonStepSeq));
+          var logText = m.logText || ((m.keyword || "") + " " + (m.text || "") + " … " + (m.status || "") + "\n");
+
+          var headLine = m.logHeadline;
+          if (headLine == null || headLine === "") {
+            var ltParts = logText.split("\n\n");
+            headLine = ltParts.length ? ltParts[0] : logText;
+            if (headLine && !/\n$/.test(headLine)) {
+              headLine += "\n";
+            }
+          }
+          var stepErr = (m.error || "").trim();
+          stepHeadlineByKey[stepKey] = headLine || "";
+          stepErrorByKey[stepKey] = stepErr;
+          bumpFeatureStepPart(headLine, stepErr);
+          bumpScenarioStepPart(sk, headLine, stepErr);
+          bumpStep(stepKey, logText);
+
+          if (stepIsFail(m.status)) scenarioFailed[sk] = true;
+          if (stepIsPassish(m.status)) scenarioHasPass[sk] = true;
+
+          var parent = currentScenarioSteps;
+          if (!parent) {
+            if (!featureBody) ensureFeatureBody("(feature)");
+            var orphan = document.createElement("details");
+            orphan.className = "tree-node tree-scenario";
+            orphan.open = false;
+            var orow = makeSummaryRow(m.scenario || "(scenario)");
+            applyTreeRowBleed(orow.sum, 1);
+            var ob = document.createElement("div");
+            ob.className = "tree-children tree-steps";
+            orphan.appendChild(orow.sum);
+            orphan.appendChild(ob);
+            featureBody.appendChild(orphan);
+            parent = ob;
+            currentScenarioSteps = ob;
+            scenarioIcons[sk] = orow.icon;
+            if (scenarioFailed[sk] === undefined) scenarioFailed[sk] = false;
+            if (scenarioHasPass[sk] === undefined) scenarioHasPass[sk] = false;
+            orow.sum.dataset.logScope = "scenario";
+            orow.sum.dataset.scenarioKey = sk;
+            wireExpandableDetails(orphan, orow.sum, function () {
+              setSelected(orow.sum);
+              renderLogSegments(logByScenario[sk] || []);
+            });
+          }
+
+          var line = document.createElement("div");
+          line.className = "tree-step" + (stepIsFail(m.status) ? " tree-step-fail" : "");
+          line.dataset.stepKey = stepKey;
+          var ic = document.createElement("span");
+          if (stepIsFail(m.status)) {
+            ic.className = "tree-row-icon icon-fail";
+            ic.textContent = String.fromCharCode(0x2717);
+          } else if (stepIsPassish(m.status)) {
+            ic.className = "tree-row-icon icon-pass";
+            ic.textContent = String.fromCharCode(0x2713);
+          } else {
+            ic.className = "tree-row-icon icon-none";
+            ic.textContent = String.fromCharCode(0x2003);
+          }
+          ic.setAttribute("aria-hidden", "true");
+          var lab = document.createElement("span");
+          lab.className = "tree-row-label";
+          var stepLabel = ((m.keyword || "") + " " + (m.text || "")).replace(/\s+/g, " ").trim();
+          lab.textContent = stepLabel || "(step)";
+          line.appendChild(ic);
+          line.appendChild(lab);
+          applyTreeRowBleed(line, 2, TREE_STEP_BLEED_REDUCE_PX);
+          parent.appendChild(line);
+          bindStepLine(line, stepKey);
+
+          refreshScenarioIcon(sk);
+          refreshFeatureIcon();
+          treeRoot.scrollTop = treeRoot.scrollHeight;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

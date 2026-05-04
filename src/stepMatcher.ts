@@ -1,15 +1,27 @@
-import { StepDefinition, StepKeyword, StepInfo } from "./types";
-import {
-  STEP_KEYWORD_REGEX,
-  DIRECT_KEYWORD_REGEX,
-  CONTINUATION_KEYWORD_REGEX,
-  EMPTY_OR_COMMENT_REGEX,
-  REGEX_SPECIAL_CHARS,
-  BEHAVE_PLACEHOLDER_REGEX,
-  BEHAVE_TYPE_FRAGMENTS,
-  DEFAULT_PLACEHOLDER_FRAGMENT,
-  OUTLINE_PLACEHOLDER_FRAGMENT,
-} from "./constants";
+import { StepDefinition, StepKeyword } from "./types";
+
+/**
+ * Behave type placeholders and their regex equivalents
+ * See: https://behave.readthedocs.io/en/stable/parse.html
+ */
+const BEHAVE_TYPE_PATTERNS: Record<string, string> = {
+  d: "-?\\d+", // integer
+  f: "-?\\d+\\.?\\d*", // float
+  w: "\\w+", // word
+  W: "\\W+", // non-word
+  s: "\\s+", // whitespace
+  S: "\\S+", // non-whitespace
+};
+
+/**
+ * Default pattern for untyped placeholders like {name}
+ */
+const DEFAULT_PLACEHOLDER_PATTERN = ".+";
+
+/**
+ * Pattern to match Scenario Outline placeholders like <name>
+ */
+const OUTLINE_PLACEHOLDER_PATTERN = "<[^>]+>";
 
 /**
  * Converts a Behave pattern string to a RegExp.
@@ -28,7 +40,7 @@ import {
  */
 export function behavePatternToRegex(pattern: string): RegExp {
   // Escape regex special characters except for our placeholders
-  let regexStr = pattern.replace(REGEX_SPECIAL_CHARS, (char) => {
+  let regexStr = pattern.replace(/[.*+?^${}()|[\]\\]/g, (char) => {
     // Don't escape curly braces yet, we'll handle them specially
     if (char === "{" || char === "}") {
       return char;
@@ -40,19 +52,33 @@ export function behavePatternToRegex(pattern: string): RegExp {
   // 1. The expected value type (e.g., \d+ for integers)
   // 2. OR a Scenario Outline placeholder (<name>)
   // Pattern: {name} or {name:type}
-  regexStr = regexStr.replace(BEHAVE_PLACEHOLDER_REGEX, (_, _name, type) => {
-    const typeFragment = type && BEHAVE_TYPE_FRAGMENTS[type]
-      ? BEHAVE_TYPE_FRAGMENTS[type]
-      : DEFAULT_PLACEHOLDER_FRAGMENT;
+  regexStr = regexStr.replace(/\{(\w+)(?::(\w))?\}/g, (_, _name, type) => {
+    const typePattern = type && BEHAVE_TYPE_PATTERNS[type]
+      ? BEHAVE_TYPE_PATTERNS[type]
+      : DEFAULT_PLACEHOLDER_PATTERN;
 
-    // Non-capturing group with alternation: (typeFragment|<placeholder>)
-    return `(?:${typeFragment}|${OUTLINE_PLACEHOLDER_FRAGMENT})`;
+    // Non-capturing group with alternation: (typePattern|<placeholder>)
+    return `(?:${typePattern}|${OUTLINE_PLACEHOLDER_PATTERN})`;
   });
 
   // Handle optional text in Behave patterns: (?:optional)?
   // This is already valid regex, so we leave it as-is
 
   return new RegExp(`^${regexStr}$`, "i");
+}
+
+/**
+ * Checks if a step text matches a step definition.
+ *
+ * @param stepText The step text from the .feature file (without keyword)
+ * @param definition The step definition to match against
+ * @returns true if the step text matches the definition's pattern
+ */
+export function matchesStepDefinition(
+  stepText: string,
+  definition: StepDefinition
+): boolean {
+  return definition.regex.test(stepText.trim());
 }
 
 /**
@@ -95,8 +121,8 @@ export function findMatchingDefinitions(
 export function parseStepLine(
   line: string,
   previousKeyword: StepKeyword | null
-): StepInfo | null {
-  const stepMatch = line.match(STEP_KEYWORD_REGEX);
+): { keyword: string; text: string; effectiveKeyword: StepKeyword | null } | null {
+  const stepMatch = line.match(/^\s*(Given|When|Then|And|But|\*)\s+(.+)$/i);
 
   if (!stepMatch) {
     return null;
@@ -142,14 +168,14 @@ export function resolveEffectiveKeyword(
 ): StepKeyword | null {
   // First check if the current line has a direct keyword (Given/When/Then)
   const currentLine = lines[targetLine];
-  const directMatch = currentLine.match(DIRECT_KEYWORD_REGEX);
+  const directMatch = currentLine.match(/^\s*(Given|When|Then)\s+/i);
   if (directMatch) {
     return directMatch[1].toLowerCase() as StepKeyword;
   }
 
-  // If current line is And/But/*, search backwards for parent keyword
-  const isAndButStar = currentLine.match(CONTINUATION_KEYWORD_REGEX);
-  if (!isAndButStar) {
+  // If current line is And/But, search backwards for parent keyword
+  const isAndBut = currentLine.match(/^\s*(And|But|\*)\s+/i);
+  if (!isAndBut) {
     // Not a step line
     return null;
   }
@@ -159,20 +185,20 @@ export function resolveEffectiveKeyword(
     const line = lines[i];
     
     // Found a direct keyword - this is the parent
-    const parentMatch = line.match(DIRECT_KEYWORD_REGEX);
+    const parentMatch = line.match(/^\s*(Given|When|Then)\s+/i);
     if (parentMatch) {
       return parentMatch[1].toLowerCase() as StepKeyword;
     }
 
-    // Skip And/But/* lines, continue searching
-    const andButMatch = line.match(CONTINUATION_KEYWORD_REGEX);
+    // Skip And/But lines, continue searching
+    const andButMatch = line.match(/^\s*(And|But|\*)\s+/i);
     if (andButMatch) {
       continue;
     }
 
     // If we hit a non-step line (like Scenario:, Feature:, empty line, etc.)
     // we stop searching - no parent keyword found
-    const isEmptyOrComment = line.match(EMPTY_OR_COMMENT_REGEX);
+    const isEmptyOrComment = line.match(/^\s*(#.*)?$/);
     if (!isEmptyOrComment) {
       // Hit a structural line like Scenario:, break the search
       break;
