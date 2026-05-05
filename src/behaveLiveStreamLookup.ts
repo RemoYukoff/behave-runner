@@ -12,7 +12,9 @@ import {
 } from "./behaveLiveStreamPaths";
 
 /** 0-based line in `behave:scen:<encPath>:<line>` ids (Examples row or scenario keyword line). */
-function scenarioAnchorLine0FromId(ch: BehaveHierarchyNode): number | undefined {
+export function scenarioAnchorLine0FromScenarioNode(
+  ch: BehaveHierarchyNode
+): number | undefined {
   if (!ch.id.startsWith(SCEN_PREFIX)) {
     return undefined;
   }
@@ -24,6 +26,43 @@ function scenarioAnchorLine0FromId(ch: BehaveHierarchyNode): number | undefined 
   const lineStr = rest.slice(lastColon + 1);
   const sl = parseInt(lineStr, 10);
   return Number.isFinite(sl) ? sl : undefined;
+}
+
+/** True when Behave's `file:line` location refers to this scenario node's anchor or range. */
+export function scenarioNodeMatchesBehaveLocation(
+  scenarioNode: BehaveHierarchyNode,
+  locationStr: string | undefined,
+  jobFsPath: string,
+  workspaceRoot: string
+): boolean {
+  const loc = parseBehaveLocation(locationStr);
+  if (!loc || !pathsEqualFs(loc.filePath, jobFsPath, workspaceRoot)) {
+    return false;
+  }
+  const line0 = loc.line1Based - 1;
+  const anchor = scenarioAnchorLine0FromScenarioNode(scenarioNode);
+  if (anchor !== undefined && anchor === line0) {
+    return true;
+  }
+  const r = scenarioNode.range?.start.line;
+  return r !== undefined && r === line0;
+}
+
+/** Count scenario children whose outline base title (after ` -- @…`) matches. */
+export function countScenariosWithStrippedOutlineName(
+  featureItem: BehaveHierarchyNode,
+  strippedNormalized: string
+): number {
+  let n = 0;
+  for (const ch of featureItem.children.values()) {
+    if (!ch.id.startsWith(SCEN_PREFIX)) {
+      continue;
+    }
+    if (normalizeScenarioName(stripOutlineSuffix(ch.label)) === strippedNormalized) {
+      n += 1;
+    }
+  }
+  return n;
 }
 
 function disambiguateScenariosByLocation(
@@ -38,7 +77,7 @@ function disambiguateScenariosByLocation(
   }
   const line0 = loc.line1Based - 1;
   const byIdLine = candidates.filter(
-    (ch) => scenarioAnchorLine0FromId(ch) === line0
+    (ch) => scenarioAnchorLine0FromScenarioNode(ch) === line0
   );
   if (byIdLine.length === 1) {
     return byIdLine[0];

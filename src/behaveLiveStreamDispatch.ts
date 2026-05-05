@@ -1,14 +1,17 @@
 import * as vscode from "vscode";
 import type { BehaveHierarchyNode } from "./behaveHierarchyModel";
 import {
+  countScenariosWithStrippedOutlineName,
   findBgItem,
   findScenarioItem,
-  findStepUnderParent
+  findStepUnderParent,
+  scenarioNodeMatchesBehaveLocation
 } from "./behaveLiveStreamLookup";
 import {
   normalizeScenarioName,
   parseBehaveLocation,
-  pathsEqualFs
+  pathsEqualFs,
+  stripOutlineSuffix
 } from "./behaveLiveStreamPaths";
 import { normalizeToCrlfChunk } from "./text/normalizeCrlf";
 import type { LivePanelToWebviewMessage } from "./ui/livePanelProtocol";
@@ -46,17 +49,44 @@ function resolveScenarioItem(
   fsPath: string,
   workspaceRoot: string
 ): BehaveHierarchyNode | undefined {
+  if (job.kind === "scenario") {
+    const target = job.scenarioItem;
+    if (!scenarioName?.trim()) {
+      return scenarioNodeMatchesBehaveLocation(
+        target,
+        locationStr,
+        fsPath,
+        workspaceRoot
+      )
+        ? target
+        : undefined;
+    }
+    const ev = scenarioName;
+    if (normalizeScenarioName(target.label) === normalizeScenarioName(ev)) {
+      return target;
+    }
+    if (scenarioNodeMatchesBehaveLocation(target, locationStr, fsPath, workspaceRoot)) {
+      return target;
+    }
+    const strippedEv = normalizeScenarioName(stripOutlineSuffix(ev));
+    const strippedJob = normalizeScenarioName(stripOutlineSuffix(target.label));
+    if (
+      strippedEv === strippedJob &&
+      countScenariosWithStrippedOutlineName(featureItem, strippedEv) === 1
+    ) {
+      return target;
+    }
+    const found = findScenarioItem(
+      featureItem,
+      ev,
+      locationStr,
+      fsPath,
+      workspaceRoot
+    );
+    return found?.id === target.id ? target : undefined;
+  }
   if (!scenarioName) {
     return undefined;
-  }
-  if (job.kind === "scenario") {
-    if (
-      normalizeScenarioName(job.scenarioName) !==
-      normalizeScenarioName(scenarioName ?? "")
-    ) {
-      return undefined;
-    }
-    return job.scenarioItem;
   }
   return findScenarioItem(
     featureItem,
