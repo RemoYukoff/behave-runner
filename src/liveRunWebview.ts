@@ -1,6 +1,14 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import {
+  setLiveRunPanelGateway,
+  type LiveRunPanelGateway
+} from "./behaveRunnerServices";
+import {
+  isLivePanelFromWebviewMessage,
+  type LivePanelToWebviewMessage
+} from "./ui/livePanelProtocol";
 
 const VIEW_TYPE = "behaveRunner.liveRun";
 
@@ -98,8 +106,7 @@ function shrinkCaptureIfNeeded(messages: unknown[]): unknown[] {
   return data;
 }
 
-/** Persist the captured Live panel message log for this workspace (after a Run finishes). */
-export function persistLivePanelCaptureNow(): void {
+function persistLivePanelCaptureNowImpl(): void {
   const memento = workspaceStateForLivePanel;
   if (!memento || livePanelCapture.length <= 1) {
     return;
@@ -116,11 +123,29 @@ export function persistLivePanelCaptureNow(): void {
   }
 }
 
+function createLivePanelGateway(
+  postToWebview: (message: LivePanelToWebviewMessage) => void
+): LiveRunPanelGateway {
+  return {
+    post(message: LivePanelToWebviewMessage): void {
+      livePanelCapture.push(cloneForCapture(message));
+      postToWebview(message);
+    },
+    clear(): void {
+      livePanelCapture = [{ type: "clear" }];
+      postToWebview({ type: "clear" });
+    },
+    persistCapture(): void {
+      persistLivePanelCaptureNowImpl();
+    }
+  };
+}
+
 export function registerLiveRunWebview(
   context: vscode.ExtensionContext
 ): void {
   workspaceStateForLivePanel = context.workspaceState;
-  const provider = new LiveRunWebviewProvider(context.extensionUri, context);
+  const provider = new LiveRunWebviewProvider(context.extensionUri);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(VIEW_TYPE, provider, {
       webviewOptions: { retainContextWhenHidden: true }
@@ -131,17 +156,6 @@ export function registerLiveRunWebview(
       await vscode.commands.executeCommand("behaveRunner.liveRun.focus");
     })
   );
-}
-
-/** All Live run UI updates go through here (from the Behave NDJSON live stream only). */
-export function postLiveRunMessage(message: unknown): void {
-  livePanelCapture.push(cloneForCapture(message));
-  LiveRunWebviewProvider.instance?.post(message);
-}
-
-export function clearLiveRunPanel(): void {
-  livePanelCapture = [{ type: "clear" }];
-  LiveRunWebviewProvider.instance?.post({ type: "clear" });
 }
 
 function loadLiveRunHtml(extensionUri: vscode.Uri): string {
@@ -161,51 +175,76 @@ function buildLiveRunPanelHtml(
   const codiconCss = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, "media", "codicons", "codicon.css")
   );
+  const bundledJs = vscode.Uri.joinPath(
+    extensionUri,
+    "media",
+    "liveRunPanel.bundle.js"
+  );
+  const useBundle = fs.existsSync(bundledJs.fsPath);
+  const scriptSrc = useBundle ? webview.asWebviewUri(bundledJs).toString() : "";
   const csp = [
     "default-src 'none'",
     `style-src ${webview.cspSource} 'unsafe-inline'`,
     `font-src ${webview.cspSource}`,
-    "script-src 'unsafe-inline'"
+    useBundle
+      ? `script-src ${webview.cspSource}`
+      : "script-src 'unsafe-inline'"
   ].join("; ");
   html = html.replace("BEHAVE_RUN_CSP_PLACEHOLDER", csp);
   html = html.replace(
     "BEHAVE_RUN_CODICON_LINK_PLACEHOLDER",
     `<link rel="stylesheet" href="${codiconCss}" />`
   );
+  html = html.replace(
+    "BEHAVE_RUN_SCRIPT_PLACEHOLDER",
+    useBundle
+      ? `<script src="${scriptSrc}"></script>`
+      : "<!-- Behave Runner: run npm run build:webview to produce media/liveRunPanel.bundle.js -->"
+  );
   return html;
 }
 
 class LiveRunWebviewProvider implements vscode.WebviewViewProvider {
-  static instance: LiveRunWebviewProvider | undefined;
-
   private view?: vscode.WebviewView;
+  /** Must be single-shot per webview; stacking listeners duplicates replay + console output. */
+  private webviewMessageDisposable?: vscode.Disposable;
 
-  constructor(
-    private readonly extensionUri: vscode.Uri,
-    private readonly extContext: vscode.ExtensionContext
-  ) {}
+  constructor(private readonly extensionUri: vscode.Uri) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
-    LiveRunWebviewProvider.instance = this;
+    this.webviewMessageDisposable?.dispose();
+    this.webviewMessageDisposable = undefined;
+
     this.view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [this.extensionUri]
     };
+
     webviewView.webview.html = buildLiveRunPanelHtml(
       webviewView.webview,
       this.extensionUri
     );
 
-    this.extContext.subscriptions.push(
-      webviewView.webview.onDidReceiveMessage((msg: unknown) => {
-        void handleLiveRunWebviewMessage(webviewView.webview, msg);
-      })
-    );
-  }
+    const gateway = createLivePanelGateway((msg) => {
+      void webviewView.webview.postMessage(msg);
+    });
+    setLiveRunPanelGateway(gateway);
 
-  post(message: unknown): void {
-    void this.view?.webview.postMessage(message);
+    this.webviewMessageDisposable = webviewView.webview.onDidReceiveMessage(
+      (msg: unknown) => {
+        void handleLiveRunWebviewMessage(webviewView.webview, msg);
+      }
+    );
+
+    webviewView.onDidDispose(() => {
+      this.webviewMessageDisposable?.dispose();
+      this.webviewMessageDisposable = undefined;
+      if (this.view === webviewView) {
+        setLiveRunPanelGateway(undefined);
+        this.view = undefined;
+      }
+    });
   }
 }
 
@@ -218,48 +257,51 @@ function postStoredLivePanelReplay(webview: vscode.Webview): void {
   if (!Array.isArray(saved) || saved.length === 0) {
     return;
   }
-  void webview.postMessage({ type: "replayCapture", messages: saved });
+  const replay: LivePanelToWebviewMessage = {
+    type: "replayCapture",
+    messages: saved
+  };
+  void webview.postMessage(replay);
 }
 
 async function handleLiveRunWebviewMessage(
   webview: vscode.Webview,
   msg: unknown
 ): Promise<void> {
-  if (typeof msg !== "object" || msg === null) {
+  if (!isLivePanelFromWebviewMessage(msg)) {
     return;
   }
-  const m = msg as Record<string, unknown>;
-  if (m.type === "livePanelReady") {
+  if (msg.type === "livePanelReady") {
     postStoredLivePanelReplay(webview);
     return;
   }
-  if (m.type === "stopRun") {
+  if (msg.type === "stopRun") {
     await vscode.commands.executeCommand("behaveRunner.cancelRun");
     return;
   }
-  if (m.type === "rerunLastRun") {
+  if (msg.type === "rerunLastRun") {
     await vscode.commands.executeCommand("behaveRunner.rerunLastRun");
     return;
   }
-  if (m.type !== "revealStep") {
+  if (msg.type !== "revealStep") {
     return;
   }
   const fsPath =
-    typeof m.path === "string"
-      ? m.path
-      : typeof m.gotoPath === "string"
-        ? m.gotoPath
+    typeof msg.path === "string"
+      ? msg.path
+      : typeof msg.gotoPath === "string"
+        ? msg.gotoPath
         : "";
   let lineRaw = NaN;
-  if (typeof m.line === "number" && Number.isFinite(m.line)) {
-    lineRaw = Math.floor(m.line);
-  } else if (typeof m.gotoLine === "number" && Number.isFinite(m.gotoLine)) {
-    lineRaw = Math.floor(m.gotoLine);
-  } else if (typeof m.line === "string") {
-    const n = Number.parseInt(m.line, 10);
+  if (typeof msg.line === "number" && Number.isFinite(msg.line)) {
+    lineRaw = Math.floor(msg.line);
+  } else if (typeof msg.gotoLine === "number" && Number.isFinite(msg.gotoLine)) {
+    lineRaw = Math.floor(msg.gotoLine);
+  } else if (typeof msg.line === "string") {
+    const n = Number.parseInt(msg.line, 10);
     lineRaw = Number.isNaN(n) ? NaN : n;
-  } else if (typeof m.gotoLine === "string") {
-    const n = Number.parseInt(m.gotoLine, 10);
+  } else if (typeof msg.gotoLine === "string") {
+    const n = Number.parseInt(msg.gotoLine, 10);
     lineRaw = Number.isNaN(n) ? NaN : n;
   }
   if (!fsPath || Number.isNaN(lineRaw)) {

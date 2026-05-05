@@ -1,0 +1,859 @@
+/// <reference lib="dom" />
+
+declare function acquireVsCodeApi(): {
+  postMessage(data: unknown): void;
+};
+
+(function () {
+      var vscodeApi = null;
+      try {
+        if (typeof acquireVsCodeApi === "function") {
+          vscodeApi = acquireVsCodeApi();
+        }
+      } catch (e) {
+        /* not in VS Code webview (e.g. opened as file://) */
+      }
+      var shell = document.getElementById("shell");
+      var shellMain = document.getElementById("shellMain");
+      var emptyPlaceholder = document.getElementById("emptyPlaceholder");
+      var paneTree = document.getElementById("paneTree");
+      var splitter = document.getElementById("splitter");
+      var treeRoot = document.getElementById("treeRoot");
+      var consoleOut = document.getElementById("consoleOut");
+      var featureBody = null;
+      var currentScenarioSteps = null;
+      var logFeature = [];
+      var logByScenario = Object.create(null);
+      var logByStep = Object.create(null);
+      var stepHeadlineByKey = Object.create(null);
+      var stepErrorByKey = Object.create(null);
+      var selectedEl = null;
+      var anonStepSeq = 0;
+      /** Must match .tree-children: padding-left 14px. */
+      var TREE_CHILD_INDENT_PX = 14;
+
+      function applyTreeRowBleed(
+        el: HTMLElement,
+        ancestorTreeChildDepth: number,
+        bleedReducePx?: number
+      ): void {
+        var reduce = bleedReducePx || 0;
+        var raw = ancestorTreeChildDepth * TREE_CHILD_INDENT_PX - reduce;
+        var px = (raw > 0 ? raw : 0) + "px";
+        el.style.setProperty("--tree-bleed-left", px);
+      }
+
+      function syncRunLayoutVisibility() {
+        var hasTree = treeRoot && treeRoot.childElementCount > 0;
+        if (hasTree) {
+          shell.classList.remove("hidden");
+          emptyPlaceholder.classList.add("hidden");
+        } else {
+          shell.classList.add("hidden");
+          emptyPlaceholder.classList.remove("hidden");
+        }
+      }
+
+      var TREE_W_KEY = "behaveRunner.liveRun.treeWidthPx";
+
+      var featureIconEl = null;
+      var scenarioIcons = Object.create(null);
+      var scenarioFailed = Object.create(null);
+      var scenarioSkipped = Object.create(null);
+      var scenarioDone = Object.create(null);
+      var scenarioDoneStatus = Object.create(null);
+      /** Steps currently executing (between step_started and step_finished) per scenario key. */
+      var scenarioRunningStepCount = Object.create(null);
+      var pendingStepRowByKey = Object.create(null);
+
+      function applyTreeWidth(px) {
+        var rootW =
+          shellMain && shellMain.clientWidth > 80
+            ? shellMain.clientWidth
+            : 640;
+        var w = Math.max(120, Math.min(px, rootW - 80));
+        paneTree.style.flex = "0 0 " + w + "px";
+        paneTree.style.width = w + "px";
+      }
+
+      var savedW = localStorage.getItem(TREE_W_KEY);
+      if (savedW) {
+        var parsed = parseInt(savedW, 10);
+        if (!isNaN(parsed)) applyTreeWidth(parsed);
+      }
+
+      var dragStartX = 0;
+      var dragStartW = 0;
+      splitter.addEventListener("mousedown", function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        dragStartX = e.clientX;
+        dragStartW = paneTree.getBoundingClientRect().width;
+        splitter.classList.add("is-dragging");
+        document.body.style.cursor = "col-resize";
+        function onMove(e2) {
+          var dx = e2.clientX - dragStartX;
+          applyTreeWidth(dragStartW + dx);
+        }
+        function onUp() {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+          splitter.classList.remove("is-dragging");
+          document.body.style.cursor = "";
+          localStorage.setItem(
+            TREE_W_KEY,
+            String(Math.round(paneTree.getBoundingClientRect().width))
+          );
+        }
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+      });
+
+      function setRowIcon(iconSpan, kind) {
+        iconSpan.textContent = "";
+        var k = kind || "none";
+        var base = "tree-row-icon icon-" + k;
+        if (k === "pass") {
+          iconSpan.className = base + " codicon codicon-pass";
+        } else if (k === "fail") {
+          iconSpan.className = base + " codicon codicon-error";
+        } else if (k === "skip") {
+          iconSpan.className = base + " codicon codicon-circle-slash";
+        } else if (k === "pending") {
+          iconSpan.className =
+            base + " codicon codicon-loading codicon-modifier-spin";
+        } else {
+          iconSpan.className = base;
+        }
+      }
+
+      function stepIsFail(status) {
+        var s = (status || "").toLowerCase();
+        return s === "failed" || s === "error" || s === "undefined";
+      }
+
+      function stepIsPassish(status) {
+        var s = (status || "").toLowerCase();
+        return s === "passed" || s === "pending";
+      }
+
+      function stepIsSkip(status) {
+        var s = (status || "").toLowerCase();
+        return s === "skipped";
+      }
+
+      function finalStatusKind(status) {
+        var s = (status || "").toLowerCase();
+        if (s === "failed" || s === "error" || s === "undefined") return "fail";
+        if (s === "passed" || s === "pending") return "pass";
+        if (s === "skipped") return "skip";
+        return "";
+      }
+
+      function getRunningStepCount(sk) {
+        var n = scenarioRunningStepCount[sk];
+        return n == null || isNaN(n) ? 0 : n;
+      }
+
+      function bumpRunningStepCount(sk, delta) {
+        if (!sk) return;
+        var n = Math.max(0, getRunningStepCount(sk) + delta);
+        scenarioRunningStepCount[sk] = n;
+      }
+
+      /** Scenario is fully closed: Behave emitted scenario_finished and no step is still executing. */
+      function isScenarioSettled(sk) {
+        if (scenarioSkipped[sk]) return true;
+        return !!scenarioDone[sk] && getRunningStepCount(sk) === 0;
+      }
+
+      /**
+       * Icon rule: spinner (pending) while this node OR any descendant is pending.
+       * - Step (leaf): pending only while executing — handled by row icon in step_started / step.
+       * - Scenario: pending if not failed/final-fail AND (still running steps OR scenario not settled).
+       */
+      function isScenarioIconPending(sk) {
+        if (scenarioSkipped[sk] || scenarioDoneStatus[sk] === "skip") {
+          return false;
+        }
+        if (scenarioFailed[sk] || scenarioDoneStatus[sk] === "fail") {
+          return false;
+        }
+        return getRunningStepCount(sk) > 0 || !scenarioDone[sk];
+      }
+
+      function refreshScenarioIcon(sk) {
+        var icon = scenarioIcons[sk];
+        if (!icon) return;
+        if (scenarioSkipped[sk] || scenarioDoneStatus[sk] === "skip") {
+          setRowIcon(icon, "skip");
+          return;
+        }
+        if (scenarioFailed[sk] || scenarioDoneStatus[sk] === "fail") {
+          setRowIcon(icon, "fail");
+          return;
+        }
+        if (isScenarioIconPending(sk)) {
+          setRowIcon(icon, "pending");
+          return;
+        }
+        if (scenarioDoneStatus[sk] === "pass") {
+          setRowIcon(icon, "pass");
+          return;
+        }
+        setRowIcon(icon, "none");
+      }
+
+      function refreshFeatureIcon() {
+        if (!featureIconEl) return;
+        var keys = Object.keys(scenarioIcons);
+        if (keys.length === 0) {
+          setRowIcon(featureIconEl, "pending");
+          return;
+        }
+        var anyPendingChild = false;
+        var anyScenarioSkipped = false;
+        var anyScenarioFailed = false;
+        var i;
+        var k;
+        for (i = 0; i < keys.length; i++) {
+          k = keys[i];
+          if (!isScenarioSettled(k)) anyPendingChild = true;
+          if (scenarioSkipped[k] || scenarioDoneStatus[k] === "skip") {
+            anyScenarioSkipped = true;
+          }
+          if (scenarioFailed[k] || scenarioDoneStatus[k] === "fail") {
+            anyScenarioFailed = true;
+          }
+        }
+        if (anyPendingChild) {
+          setRowIcon(featureIconEl, "pending");
+          return;
+        }
+        if (anyScenarioSkipped) {
+          setRowIcon(featureIconEl, "skip");
+          return;
+        }
+        if (anyScenarioFailed) {
+          setRowIcon(featureIconEl, "fail");
+          return;
+        }
+        var allPass = true;
+        for (i = 0; i < keys.length; i++) {
+          k = keys[i];
+          if (scenarioDoneStatus[k] !== "pass") {
+            allPass = false;
+            break;
+          }
+        }
+        setRowIcon(featureIconEl, allPass ? "pass" : "none");
+      }
+
+      function clearSelectionVisual() {
+        if (selectedEl) {
+          selectedEl.classList.remove("tree-item-selected");
+          selectedEl = null;
+        }
+      }
+
+      function setSelected(el) {
+        clearSelectionVisual();
+        if (el) {
+          el.classList.add("tree-item-selected");
+          selectedEl = el;
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      /** Native tooltip on hover (full text when label is ellipsis-truncated). */
+      function setRowTooltip(el, text) {
+        var t = text == null ? "" : String(text);
+        if (t) {
+          el.title = t;
+        } else {
+          el.removeAttribute("title");
+        }
+      }
+
+      /** Split plain log string into headline vs error tail (stderr / traceback). */
+      function splitHeuristicErrorTail(t) {
+        if (!t) return { head: "", err: "" };
+        var s = String(t).replace(/\r\n/g, "\n").replace(/^\n+/, "");
+        var m = s.match(
+          /^([\s\S]*?\n)(\s*(?:Traceback|During handling|AssertionError:|^Error:|\w+Error:)[\s\S]*)$/m
+        );
+        if (m && m[2] && m[2].trim()) {
+          return { head: m[1], err: m[2] };
+        }
+        var ix = s.indexOf("\n\nTraceback");
+        if (ix !== -1) {
+          return { head: s.slice(0, ix + 1), err: s.slice(ix + 2) };
+        }
+        return { head: s, err: "" };
+      }
+
+      function pushLogSegment(arr, plain, err) {
+        var p = plain || "";
+        var e = (err || "").trim();
+        if (!p && !e) return;
+        arr.push({ p: p, e: e });
+      }
+
+      function appendLastSegmentErr(arr, text) {
+        if (!arr || !arr.length || text == null || text === "") return;
+        var last = arr[arr.length - 1];
+        if (last && typeof last === "object" && "e" in last) {
+          last.e = (last.e || "") + text;
+        } else {
+          arr.push({ p: "", e: String(text) });
+        }
+      }
+
+      function renderLogSegments(parts) {
+        if (!parts || !parts.length) {
+          consoleOut.textContent = "";
+          return;
+        }
+        var html = "";
+        for (var i = 0; i < parts.length; i++) {
+          var seg = parts[i];
+          var head = "";
+          var err = "";
+          if (typeof seg === "string") {
+            var sp = splitHeuristicErrorTail(seg);
+            head = sp.head;
+            err = sp.err;
+          } else if (seg && typeof seg === "object") {
+            head = String(seg.p || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
+            err = String(seg.e || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
+          }
+          if (head) {
+            html += '<span class="console-line">' + escapeHtml(head) + "</span>";
+          }
+          if (err && err.trim()) {
+            html += '<span class="console-err">' + escapeHtml(err) + "</span>";
+          }
+        }
+        if (!html.trim()) {
+          consoleOut.textContent = "";
+          return;
+        }
+        consoleOut.innerHTML = html;
+        consoleOut.scrollTop = 0;
+      }
+
+      function showConsolePlain(text) {
+        var t = (text || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
+        if (!t.trim()) {
+          consoleOut.textContent = "";
+          return;
+        }
+        renderLogSegments([t]);
+      }
+
+      function showStepConsole(stepKey) {
+        var head = stepHeadlineByKey[stepKey];
+        var err = (stepErrorByKey[stepKey] || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
+        var joined = (logByStep[stepKey] || []).join("");
+        if (head == null || head === "") {
+          head = (joined.split("\n\n")[0] || "").trimEnd() + "\n";
+          if (head === "\n") head = "";
+        }
+        if (head != null && head !== "") {
+          head = String(head).replace(/^\n+/, "");
+        }
+        if (!err.trim()) {
+          renderLogSegments([joined || head]);
+          return;
+        }
+        if (!head) {
+          renderLogSegments([joined]);
+          return;
+        }
+        renderLogSegments([{ p: head, e: err }]);
+      }
+
+      function refreshConsoleIfLiveStepAppend() {
+        if (!selectedEl || !selectedEl.dataset) return;
+        var ds = selectedEl.dataset;
+        if (ds.logScope === "feature") {
+          renderLogSegments(logFeature);
+        } else if (ds.logScope === "scenario" && ds.scenarioKey) {
+          renderLogSegments(logByScenario[ds.scenarioKey] || []);
+        } else if (
+          selectedEl.classList &&
+          selectedEl.classList.contains("tree-step") &&
+          ds.stepKey
+        ) {
+          showStepConsole(ds.stepKey);
+        }
+      }
+
+      function bumpFeature(t) {
+        if (t) pushLogSegment(logFeature, t, "");
+      }
+
+      function bumpScenario(k, t) {
+        if (!k || !t) return;
+        if (!logByScenario[k]) logByScenario[k] = [];
+        pushLogSegment(logByScenario[k], t, "");
+      }
+
+      function bumpFeatureStepPart(plain, err) {
+        pushLogSegment(logFeature, plain, err);
+      }
+
+      function bumpScenarioStepPart(k, plain, err) {
+        if (!k) return;
+        if (!logByScenario[k]) logByScenario[k] = [];
+        pushLogSegment(logByScenario[k], plain, err);
+      }
+
+      function bumpStep(k, t) {
+        if (!k || !t) return;
+        if (!logByStep[k]) logByStep[k] = [];
+        logByStep[k].push(t);
+      }
+
+      function wireExpandableDetails(detailsEl, summaryEl, onSingleSelect) {
+        summaryEl.addEventListener("click", function (e) {
+          var raw = e.target;
+          var t = raw && raw.nodeType === 3 ? raw.parentElement : raw;
+          if (t && t.closest && t.closest(".tree-chevron")) {
+            e.preventDefault();
+            e.stopPropagation();
+            detailsEl.open = !detailsEl.open;
+            return;
+          }
+          e.preventDefault();
+          if (e.detail === 1) {
+            onSingleSelect();
+          }
+        });
+        summaryEl.addEventListener("dblclick", function (e) {
+          var raw = e.target;
+          var t = raw && raw.nodeType === 3 ? raw.parentElement : raw;
+          if (t && t.closest && t.closest(".tree-chevron")) {
+            return;
+          }
+          e.preventDefault();
+          detailsEl.open = !detailsEl.open;
+        });
+      }
+
+      function applyStepGotoDataset(lineEl, m) {
+        var gp = m.gotoPath;
+        var gl = m.gotoLine;
+        if (
+          gp != null &&
+          typeof gp === "string" &&
+          gp.length > 0 &&
+          gl != null &&
+          typeof gl === "number" &&
+          Number.isFinite(gl)
+        ) {
+          lineEl.dataset.gotoPath = gp;
+          lineEl.dataset.gotoLine = String(Math.floor(gl));
+        } else {
+          delete lineEl.dataset.gotoPath;
+          delete lineEl.dataset.gotoLine;
+        }
+      }
+
+      function findScenarioKeyForStepRow(row) {
+        var det = row && row.closest && row.closest("details.tree-scenario");
+        if (!det) return "";
+        var sum = det.querySelector(":scope > summary") as HTMLElement | null;
+        return (sum && sum.dataset && sum.dataset.scenarioKey) || "";
+      }
+
+      function findScenarioDetailsForKey(sk) {
+        var icons = treeRoot.querySelectorAll("details.tree-scenario");
+        var di;
+        for (di = 0; di < icons.length; di++) {
+          var sm = icons[di].querySelector(":scope > summary") as HTMLElement | null;
+          if (sm && sm.dataset.scenarioKey === sk) {
+            return icons[di];
+          }
+        }
+        return null;
+      }
+
+      function applyRunCancelledSweep() {
+        var stepKeys = Object.keys(pendingStepRowByKey);
+        var si;
+        for (si = 0; si < stepKeys.length; si++) {
+          var stk = stepKeys[si];
+          var row = pendingStepRowByKey[stk];
+          if (!row) continue;
+          var ic = row.querySelector(".tree-row-icon");
+          if (ic) setRowIcon(ic, "skip");
+          row.classList.remove("tree-step-fail");
+          var psk = findScenarioKeyForStepRow(row);
+          if (psk) bumpRunningStepCount(psk, -1);
+          delete pendingStepRowByKey[stk];
+        }
+        var scenKeys = Object.keys(scenarioIcons);
+        for (si = 0; si < scenKeys.length; si++) {
+          var sk2 = scenKeys[si];
+          var det = findScenarioDetailsForKey(sk2);
+          var hasSkipStep =
+            !!det &&
+            det.querySelector(".tree-step .tree-row-icon.icon-skip") !== null;
+          var incomplete = !scenarioDone[sk2];
+          scenarioSkipped[sk2] = !!(hasSkipStep || incomplete);
+        }
+        for (si = 0; si < scenKeys.length; si++) {
+          refreshScenarioIcon(scenKeys[si]);
+        }
+        refreshFeatureIcon();
+      }
+
+      function bindStepLine(line, stepKey) {
+        if (line.dataset.stepBound === "1") {
+          return;
+        }
+        line.dataset.stepBound = "1";
+        line.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          setSelected(line);
+          showStepConsole(stepKey);
+        });
+        line.addEventListener("dblclick", function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (!vscodeApi) return;
+          var p = line.dataset.gotoPath;
+          var lnStr = line.dataset.gotoLine;
+          if (!p || lnStr === undefined || lnStr === "") return;
+          var lineNum = parseInt(lnStr, 10);
+          if (isNaN(lineNum)) return;
+          vscodeApi.postMessage({
+            type: "revealStep",
+            path: p,
+            line: lineNum
+          });
+        });
+      }
+
+      /** Ensure the steps container for this scenario exists (mirrors orphan creation in step handler). */
+      function ensureStepListParentForScenario(sk, scenarioLabel) {
+        var parent = currentScenarioSteps;
+        if (!parent) {
+          if (!featureBody) ensureFeatureBody("(feature)");
+          var orphan = document.createElement("details");
+          orphan.className = "tree-node tree-scenario";
+          orphan.open = false;
+          var orow = makeSummaryRow(scenarioLabel || "(scenario)");
+          applyTreeRowBleed(orow.sum, 1);
+          var ob = document.createElement("div");
+          ob.className = "tree-children tree-steps";
+          orphan.appendChild(orow.sum);
+          orphan.appendChild(ob);
+          featureBody.appendChild(orphan);
+          parent = ob;
+          currentScenarioSteps = ob;
+          scenarioIcons[sk] = orow.icon;
+          if (scenarioFailed[sk] === undefined) scenarioFailed[sk] = false;
+          if (scenarioSkipped[sk] === undefined) scenarioSkipped[sk] = false;
+          if (scenarioDone[sk] === undefined) scenarioDone[sk] = false;
+          if (scenarioDoneStatus[sk] === undefined) scenarioDoneStatus[sk] = "";
+          if (scenarioRunningStepCount[sk] === undefined) scenarioRunningStepCount[sk] = 0;
+          orow.sum.dataset.logScope = "scenario";
+          orow.sum.dataset.scenarioKey = sk;
+          wireExpandableDetails(orphan, orow.sum, function () {
+            setSelected(orow.sum);
+            renderLogSegments(logByScenario[sk] || []);
+          });
+          refreshScenarioIcon(sk);
+          refreshFeatureIcon();
+        }
+        return parent;
+      }
+
+      function makeSummaryRow(labelText) {
+        var sum = document.createElement("summary");
+        var chev = document.createElement("span");
+        chev.className = "tree-chevron";
+        chev.setAttribute("aria-hidden", "true");
+        chev.textContent = String.fromCharCode(0x25b6);
+        var icon = document.createElement("span");
+        icon.className = "tree-row-icon icon-none";
+        icon.setAttribute("aria-hidden", "true");
+        setRowIcon(icon, "pending");
+        var lab = document.createElement("span");
+        lab.className = "tree-row-label";
+        lab.textContent = labelText;
+        setRowTooltip(sum, labelText);
+        sum.appendChild(chev);
+        sum.appendChild(icon);
+        sum.appendChild(lab);
+        return { sum: sum, icon: icon };
+      }
+
+      function ensureFeatureBody(label) {
+        var details = document.createElement("details");
+        details.className = "tree-node tree-feature";
+        details.open = true;
+        var row = makeSummaryRow(label || "(feature)");
+        featureIconEl = row.icon;
+        var body = document.createElement("div");
+        body.className = "tree-children";
+        details.appendChild(row.sum);
+        details.appendChild(body);
+        treeRoot.appendChild(details);
+        featureBody = body;
+        currentScenarioSteps = null;
+        row.sum.dataset.logScope = "feature";
+        wireExpandableDetails(details, row.sum, function () {
+          setSelected(row.sum);
+          renderLogSegments(logFeature);
+        });
+        syncRunLayoutVisibility();
+      }
+
+      function handleLivePanelPayload(m) {
+        if (!m || typeof m !== "object") return;
+        if (m.type === "replayCapture" && Array.isArray(m.messages)) {
+          for (var ri = 0; ri < m.messages.length; ri++) {
+            handleLivePanelPayload(m.messages[ri]);
+          }
+          syncRunLayoutVisibility();
+          return;
+        }
+        if (m.type === "clear") {
+          treeRoot.innerHTML = "";
+          featureBody = null;
+          currentScenarioSteps = null;
+          logFeature.length = 0;
+          logByScenario = Object.create(null);
+          logByStep = Object.create(null);
+          stepHeadlineByKey = Object.create(null);
+          stepErrorByKey = Object.create(null);
+          selectedEl = null;
+          anonStepSeq = 0;
+          featureIconEl = null;
+          scenarioIcons = Object.create(null);
+          scenarioFailed = Object.create(null);
+          scenarioSkipped = Object.create(null);
+          scenarioDone = Object.create(null);
+          scenarioDoneStatus = Object.create(null);
+          scenarioRunningStepCount = Object.create(null);
+          pendingStepRowByKey = Object.create(null);
+          consoleOut.textContent = "";
+          syncRunLayoutVisibility();
+          return;
+        }
+        if (m.type === "feature") {
+          ensureFeatureBody(m.label);
+          refreshFeatureIcon();
+          treeRoot.scrollTop = 0;
+          return;
+        }
+        if (m.type === "scenario") {
+          if (!featureBody) ensureFeatureBody("(feature)");
+          var logLine = m.logLine || ("━━ " + (m.name || "(scenario)") + " ━━\n");
+          bumpFeature(logLine);
+          var sk = m.key;
+          if (sk) bumpScenario(sk, logLine);
+
+          var sdet = document.createElement("details");
+          sdet.className = "tree-node tree-scenario";
+          sdet.open = false;
+          var srow = makeSummaryRow(m.name || "(scenario)");
+          applyTreeRowBleed(srow.sum, 1);
+          var sbody = document.createElement("div");
+          sbody.className = "tree-children tree-steps";
+          sdet.appendChild(srow.sum);
+          sdet.appendChild(sbody);
+          featureBody.appendChild(sdet);
+          currentScenarioSteps = sbody;
+          var selectKey = sk || "__scenario_nokey__";
+          if (!sk) bumpScenario(selectKey, logLine);
+          scenarioIcons[selectKey] = srow.icon;
+          scenarioFailed[selectKey] = false;
+          scenarioSkipped[selectKey] = false;
+          scenarioDone[selectKey] = false;
+          scenarioDoneStatus[selectKey] = "";
+          scenarioRunningStepCount[selectKey] = 0;
+          refreshScenarioIcon(selectKey);
+          refreshFeatureIcon();
+          srow.sum.dataset.logScope = "scenario";
+          srow.sum.dataset.scenarioKey = selectKey;
+          wireExpandableDetails(sdet, srow.sum, function () {
+            setSelected(srow.sum);
+            renderLogSegments(logByScenario[selectKey] || []);
+          });
+          return;
+        }
+        if (m.type === "scenario_finished") {
+          var fsk = m.key;
+          if (!fsk) return;
+          scenarioDone[fsk] = true;
+          scenarioDoneStatus[fsk] = finalStatusKind(m.status);
+          if (scenarioDoneStatus[fsk] === "skip") {
+            scenarioSkipped[fsk] = true;
+          }
+          refreshScenarioIcon(fsk);
+          refreshFeatureIcon();
+          return;
+        }
+        if (m.type === "runCancelled") {
+          applyRunCancelledSweep();
+          return;
+        }
+        if (m.type === "step_log_append") {
+          var apk = m.stepKey;
+          var ask = m.scenarioKey;
+          var atext = m.text;
+          if (!apk || atext == null || atext === "") return;
+          appendLastSegmentErr(logFeature, atext);
+          if (ask) appendLastSegmentErr(logByScenario[ask], atext);
+          bumpStep(apk, atext);
+          stepErrorByKey[apk] = (stepErrorByKey[apk] || "") + atext;
+          refreshConsoleIfLiveStepAppend();
+          return;
+        }
+        if (m.type === "step_started") {
+          var ssk = m.scenarioKey || "__orphan__";
+          var startedKey = m.stepKey;
+          if (!startedKey || pendingStepRowByKey[startedKey]) return;
+          var pstarted = ensureStepListParentForScenario(ssk, m.scenario || "(scenario)");
+          var sline = document.createElement("div");
+          sline.className = "tree-step";
+          sline.dataset.stepKey = startedKey;
+          var sic = document.createElement("span");
+          sic.setAttribute("aria-hidden", "true");
+          setRowIcon(sic, "pending");
+          var slab = document.createElement("span");
+          slab.className = "tree-row-label";
+          var sstepLabel = ((m.keyword || "") + " " + (m.text || "")).replace(/\s+/g, " ").trim();
+          var sstepDisplay = sstepLabel || "(step)";
+          slab.textContent = sstepDisplay;
+          setRowTooltip(sline, sstepDisplay);
+          sline.appendChild(sic);
+          sline.appendChild(slab);
+          applyTreeRowBleed(sline, 2);
+          applyStepGotoDataset(sline, m);
+          pstarted.appendChild(sline);
+          bindStepLine(sline, startedKey);
+          pendingStepRowByKey[startedKey] = sline;
+          bumpRunningStepCount(ssk, 1);
+          refreshScenarioIcon(ssk);
+          refreshFeatureIcon();
+          treeRoot.scrollTop = treeRoot.scrollHeight;
+          return;
+        }
+        if (m.type === "step") {
+          var sk = m.scenarioKey || "__orphan__";
+          var stepKey = m.stepKey || ("anon-step-" + (++anonStepSeq));
+          var logText = m.logText || ((m.keyword || "") + " " + (m.text || "") + " … " + (m.status || "") + "\n");
+
+          var headLine = m.logHeadline;
+          if (headLine == null || headLine === "") {
+            var ltParts = logText.split("\n\n");
+            headLine = ltParts.length ? ltParts[0] : logText;
+            if (headLine && !/\n$/.test(headLine)) {
+              headLine += "\n";
+            }
+          }
+          var stepErr = (m.error || "").trim();
+          stepHeadlineByKey[stepKey] = headLine || "";
+          stepErrorByKey[stepKey] = stepErr;
+          bumpFeatureStepPart(headLine, stepErr);
+          bumpScenarioStepPart(sk, headLine, stepErr);
+          bumpStep(stepKey, logText);
+
+          if (stepIsFail(m.status)) scenarioFailed[sk] = true;
+          if (stepIsSkip(m.status)) scenarioSkipped[sk] = true;
+
+          var parent = ensureStepListParentForScenario(sk, m.scenario || "(scenario)");
+
+          var line = pendingStepRowByKey[stepKey];
+          var hadLiveStart = line != null;
+          delete pendingStepRowByKey[stepKey];
+          if (hadLiveStart) {
+            bumpRunningStepCount(sk, -1);
+          }
+
+          var ic;
+          var lab;
+          var stepLabel = ((m.keyword || "") + " " + (m.text || "")).replace(/\s+/g, " ").trim();
+          var stepDisplay = stepLabel || "(step)";
+
+          if (line) {
+            line.className =
+              "tree-step" +
+              (stepIsFail(m.status) ? " tree-step-fail" : "");
+            ic = line.querySelector(".tree-row-icon");
+            lab = line.querySelector(".tree-row-label");
+            if (ic) {
+              if (stepIsSkip(m.status)) setRowIcon(ic, "skip");
+              else if (stepIsFail(m.status)) setRowIcon(ic, "fail");
+              else if (stepIsPassish(m.status)) setRowIcon(ic, "pass");
+              else setRowIcon(ic, "none");
+            }
+            if (lab) lab.textContent = stepDisplay;
+            setRowTooltip(line, stepDisplay);
+            applyStepGotoDataset(line, m);
+          } else {
+            line = document.createElement("div");
+            line.className =
+              "tree-step" + (stepIsFail(m.status) ? " tree-step-fail" : "");
+            line.dataset.stepKey = stepKey;
+            ic = document.createElement("span");
+            ic.setAttribute("aria-hidden", "true");
+            if (stepIsSkip(m.status)) setRowIcon(ic, "skip");
+            else if (stepIsFail(m.status)) setRowIcon(ic, "fail");
+            else if (stepIsPassish(m.status)) setRowIcon(ic, "pass");
+            else setRowIcon(ic, "none");
+            lab = document.createElement("span");
+            lab.className = "tree-row-label";
+            lab.textContent = stepDisplay;
+            setRowTooltip(line, stepDisplay);
+            line.appendChild(ic);
+            line.appendChild(lab);
+            applyTreeRowBleed(line, 2);
+            applyStepGotoDataset(line, m);
+            parent.appendChild(line);
+          }
+
+          bindStepLine(line, stepKey);
+
+          refreshScenarioIcon(sk);
+          refreshFeatureIcon();
+          treeRoot.scrollTop = treeRoot.scrollHeight;
+        }
+      }
+
+      window.addEventListener("message", function (e) {
+        handleLivePanelPayload(e.data);
+      });
+
+      syncRunLayoutVisibility();
+
+      var btnRerun = document.getElementById("btnRerun");
+      if (btnRerun && vscodeApi) {
+        btnRerun.addEventListener("click", function () {
+          vscodeApi.postMessage({ type: "rerunLastRun" });
+        });
+      }
+
+      var btnStop = document.getElementById("btnStop");
+      if (btnStop && vscodeApi) {
+        btnStop.addEventListener("click", function () {
+          vscodeApi.postMessage({ type: "stopRun" });
+        });
+      }
+
+      if (vscodeApi) {
+        vscodeApi.postMessage({ type: "livePanelReady" });
+      }
+
+})();

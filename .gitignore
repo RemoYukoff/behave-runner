@@ -8,3 +8,7 @@ out/
 .idea/
 __pycache__/
 example-project/.venv/
+
+# Never emit compiled JS next to core sources (wrong cwd / mistaken tsc).
+packages/behave-runner-core/src/**/*.js
+packages/behave-runner-core/src/**/*.js.map

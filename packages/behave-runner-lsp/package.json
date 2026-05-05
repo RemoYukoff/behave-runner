@@ -1,0 +1,17 @@
+{
+  "name": "@behave-runner/lsp",
+  "version": "1.12.0",
+  "private": true,
+  "main": "out/server.js",
+  "dependencies": {
+    "@behave-runner/core": "file:../behave-runner-core",
+    "fast-glob": "^3.3.2",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "vscode-uri": "^3.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  }
+}

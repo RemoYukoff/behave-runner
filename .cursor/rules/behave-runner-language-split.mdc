@@ -1,0 +1,20 @@
+---
+description: Single source of truth for Behave indexing (LSP + core); avoid duplicating patterns/parsers in the extension host.
+alwaysApply: true
+---
+
+# Behave Runner — language server vs extension host
+
+## Do not duplicate
+
+1. **`behaveRunner.stepDefinitions.patterns` and `behaveRunner.featureFiles.patterns`** — Only the language server (`packages/behave-runner-lsp`) should interpret these when building indexes (via `connection.workspace.getConfiguration`). Do not add parallel glob/pattern matching in `src/` “to stay in sync” with the LSP.
+
+2. **Parsing Gherkin steps and Python `@given` / `@when` / `@then` / `@step` decorators** — Use **`@behave-runner/core`** exclusively. Do not reintroduce decorator or step-line regex in `src/`.
+
+3. **Run/debug desde CodeLens sobre el `.feature` abierto** — No añadas una segunda barrera (RPC extra o lectura de patterns) para decidir si “está incluido”; el archivo abierto ya fija la intención. El store de jerarquía basta con workspace + existencia del archivo.
+
+## Al ampliar funcionalidad
+
+- Si depende de **índice global**, **diagnostics**, **completion**, **definition** o **refs** basados en globs del workspace → **servidor LSP + core**; el host solo registra providers delgados o `LanguageClient.sendRequest` cuando la API de VS Code lo exija.
+
+- Si es **integración pura de VS Code** (debug, webview, comandos) → el extension host está bien; lecturas de `behaveRunner.*` solo para esa responsabilidad.

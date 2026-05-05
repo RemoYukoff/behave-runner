@@ -104,19 +104,29 @@
         }
     },
     "scripts": {
-        "compile": "tsc -p ./",
+        "build:webview": "esbuild src/webview/liveRunPanelScript.ts --bundle --platform=browser --target=es2020 --outfile=media/liveRunPanel.bundle.js",
+        "compile": "npm run build:webview && tsc -p packages/behave-runner-core/tsconfig.json && tsc -p packages/behave-runner-lsp/tsconfig.json && tsc -p ./ && tsc -p src/webview/tsconfig.json",
         "watch": "tsc -watch -p ./",
         "copy-codicons": "node -e \"const fs=require('fs'),p=require('path');const r=p.join('node_modules','@vscode','codicons','dist');const d=p.join('media','codicons');if(!fs.existsSync(p.join(r,'codicon.css'))){console.warn('Behave Runner: @vscode/codicons not installed; skip copy-codicons');process.exit(0);}fs.mkdirSync(d,{recursive:true});['codicon.css','codicon.ttf'].forEach(f=>fs.copyFileSync(p.join(r,f),p.join(d,f)));\"",
         "prepare": "npm run copy-codicons",
-        "vscode:prepublish": "npm run compile && npm run copy-codicons"
+        "vscode:prepublish": "npm run compile && npm run copy-codicons",
+        "test": "npm run compile && node scripts/smoke-core.cjs"
     },
     "dependencies": {
-        "@vscode/codicons": "^0.0.45"
+        "@behave-runner/core": "workspace:*",
+        "@behave-runner/lsp": "workspace:*",
+        "@vscode/codicons": "^0.0.45",
+        "vscode-languageclient": "^9.0.1"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",
         "@types/vscode": "^1.85.0",
+        "esbuild": "^0.25.0",
         "typescript": "^5.0.0"
     },
-    "license": "MIT"
+    "license": "MIT",
+    "workspaces": [
+        "packages/behave-runner-core",
+        "packages/behave-runner-lsp"
+    ]
 }

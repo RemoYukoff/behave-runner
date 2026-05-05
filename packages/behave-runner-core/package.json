@@ -1,0 +1,16 @@
+{
+  "name": "@behave-runner/core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Behave-aligned parsing and step matching (extension + future LSP)",
+  "main": "out/index.js",
+  "types": "out/index.d.ts",
+  "files": [
+    "out",
+    "README.md"
+  ],
+  "scripts": {
+    "compile": "tsc -p ./"
+  },
+  "license": "MIT"
+}

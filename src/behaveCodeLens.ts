@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
 import type { BehaveHierarchyStore } from "./behaveHierarchyModel";
-import { parseFeatureFile } from "./featureParser";
+import { parseFeatureFile } from "@behave-runner/core";
 import {
   getFeatureHierarchyNodeForPath,
   getScenarioNodeAtLine,
   getScenarioOutlineExpansionNodes,
   runBehaveHierarchyDebugSelection,
   runBehaveHierarchySelection
-} from "./testController";
+} from "./behaveRun";
 
 function lineRange(
   doc: vscode.TextDocument,
@@ -111,7 +111,7 @@ export function registerBehaveCodeLens(
     const node = await getFeatureHierarchyNodeForPath(store, fsPath);
     if (!node) {
       void vscode.window.showErrorMessage(
-        "Behave Runner: feature file is not part of the workspace discovery patterns."
+        "Behave Runner: could not resolve this feature file (open a workspace folder that contains it)."
       );
       return;
     }
@@ -127,7 +127,7 @@ export function registerBehaveCodeLens(
     const node = await getFeatureHierarchyNodeForPath(store, fsPath);
     if (!node) {
       void vscode.window.showErrorMessage(
-        "Behave Runner: feature file is not part of the workspace discovery patterns."
+        "Behave Runner: could not resolve this feature file (open a workspace folder that contains it)."
       );
       return;
     }

@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import type { BehaveHierarchyNode } from "./behaveHierarchyModel";
 import type { BehaveTreeStatus } from "./behaveRunState";
+import { normalizeToCrlfChunk } from "./text/normalizeCrlf";
+import type { LivePanelToWebviewMessage } from "./ui/livePanelProtocol";
 import {
   findBgItem,
   findScenarioItem,
@@ -55,11 +57,6 @@ export type LiveStreamEvent =
       status?: string;
       error?: string | null;
     };
-
-function chunkForTestOutput(text: string): string {
-  const normalized = text.includes("\r\n") ? text : text.replace(/\n/g, "\r\n");
-  return normalized.endsWith("\r\n") ? normalized : normalized + "\r\n";
-}
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -302,7 +299,7 @@ function stepGotoPayload(
   return { gotoPath: loc.uri.fsPath, gotoLine: loc.range.start.line };
 }
 
-export type LiveStreamSink = (message: unknown) => void;
+export type LiveStreamSink = (message: LivePanelToWebviewMessage) => void;
 
 export function liveStreamStatusToTreeStatus(status: string): BehaveTreeStatus {
   const s = status.toLowerCase();
@@ -447,7 +444,7 @@ export function dispatchLiveStreamEvent(
 
   const err = event.error?.trim();
   if (err) {
-    ctx.appendOutput(chunkForTestOutput(err), b.outputAnchor, b.locVs);
+    ctx.appendOutput(normalizeToCrlfChunk(err), b.outputAnchor, b.locVs);
   }
 
   ctx.onStepTreeStatus?.(b.stepItem, statusForTree);

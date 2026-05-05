@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { parseFeatureFile, type ParsedStep } from "./featureParser";
+import { parseFeatureFile, type ParsedStep } from "@behave-runner/core";
 import { refreshBehaveHierarchy } from "./behaveRunState";
 
 export const FEATURE_PREFIX = "behave:feat:";
@@ -163,54 +163,48 @@ export async function resolveBehaveFeatureChildrenIfNeeded(
 export class BehaveHierarchyStore {
   private readonly roots = new Map<string, BehaveHierarchyNode>();
 
-  getRoots(): BehaveHierarchyNode[] {
-    return [...this.roots.values()].sort((a, b) =>
-      a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
-    );
-  }
-
   getFeatureByFsPath(fsPath: string): BehaveHierarchyNode | undefined {
     return this.roots.get(featureId(fsPath));
   }
 
-  async discoverFeatureFiles(): Promise<void> {
-    try {
-      const patterns = vscode.workspace
-        .getConfiguration("behaveRunner")
-        .get<string[]>("featureFiles.patterns", ["**/*.feature"]);
-      const seen = new Set<string>();
-      const nextRoots = new Map<string, BehaveHierarchyNode>();
-
-      for (const pattern of patterns) {
-        const files = await vscode.workspace.findFiles(
-          pattern,
-          "**/node_modules/**"
-        );
-        for (const uri of files) {
-          const fp = uri.fsPath;
-          if (seen.has(fp)) {
-            continue;
-          }
-          seen.add(fp);
-          const id = featureId(fp);
-          const existing = this.roots.get(id);
-          const node =
-            existing ??
-            createNode(id, path.basename(fp), uri, undefined, true);
-          node.uri = uri;
-          nextRoots.set(id, node);
-        }
-      }
-
-      this.roots.clear();
-      for (const [k, v] of nextRoots) {
-        this.roots.set(k, v);
-      }
-    } catch (e) {
-      console.error("Behave Runner: discoverFeatureFiles failed:", e);
-    } finally {
-      refreshBehaveHierarchy();
+  /**
+   * Ensures a hierarchy root for an on-disk `.feature` under the open workspace.
+   * Run/debug from CodeLens already targets this file; no second “inclusion” gate.
+   * Do not re-add `featureFiles.patterns` / LSP parity checks here — see
+   * `.cursor/rules/behave-runner-language-split.mdc`.
+   */
+  async ensureFeatureRoot(fsPath: string): Promise<BehaveHierarchyNode | undefined> {
+    const existing = this.getFeatureByFsPath(fsPath);
+    if (existing) {
+      return existing;
     }
+
+    const folders = vscode.workspace.workspaceFolders;
+    if (!folders?.length) {
+      return undefined;
+    }
+
+    const normalized = path.normalize(fsPath);
+    const underWorkspace = folders.some((f) => {
+      const rel = path.relative(f.uri.fsPath, normalized);
+      return !rel.startsWith("..") && !path.isAbsolute(rel);
+    });
+    if (!underWorkspace) {
+      return undefined;
+    }
+
+    try {
+      await fs.promises.access(normalized);
+    } catch {
+      return undefined;
+    }
+
+    const uri = vscode.Uri.file(normalized);
+    const id = featureId(normalized);
+    const node = createNode(id, path.basename(normalized), uri, undefined, true);
+    this.roots.set(id, node);
+    refreshBehaveHierarchy();
+    return node;
   }
 
   removeFeatureByFsPath(fsPath: string): void {
@@ -252,7 +246,7 @@ export function registerBehaveHierarchyStore(
         if (store.getFeatureByFsPath(key)) {
           store.invalidateFeature(key);
         } else {
-          void store.discoverFeatureFiles();
+          void store.ensureFeatureRoot(key);
         }
       }, 250)
     );
@@ -260,7 +254,7 @@ export function registerBehaveHierarchyStore(
 
   featureWatcher.onDidChange((uri) => scheduleRefresh(uri));
   featureWatcher.onDidCreate(async (uri) => {
-    await store.discoverFeatureFiles();
+    await store.ensureFeatureRoot(uri.fsPath);
     scheduleRefresh(uri);
   });
   featureWatcher.onDidDelete((uri) => {
@@ -268,10 +262,6 @@ export function registerBehaveHierarchyStore(
   });
 
   context.subscriptions.push(featureWatcher);
-
-  void store.discoverFeatureFiles().catch((e) => {
-    console.error("Behave Runner: initial feature discovery failed:", e);
-  });
 
   return store;
 }
