@@ -2,6 +2,7 @@ import {
   BEHAVE_FIND_FEATURE_STEP_LOCATIONS,
   type BehaveFindFeatureStepLocationsParams,
   collectBehaveStepDecoratorsAboveFunction,
+  computeFeatureFormatLineEdits,
   DEFAULT_STEP_DEFINITION_PATTERNS,
   DEFAULT_FEATURE_FILE_PATTERNS,
   isPythonFunctionDefinitionLine,
@@ -16,6 +17,7 @@ import {
   Range,
   TextDocuments,
   TextDocumentSyncKind,
+  TextEdit,
 } from "vscode-languageserver/node";
 import type { InitializeParams } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
@@ -151,9 +153,21 @@ connection.onInitialize((params: InitializeParams) => {
         triggerCharacters: [" "],
       },
       definitionProvider: true,
+      documentFormattingProvider: true,
+      documentRangeFormattingProvider: true,
     },
   };
 });
+
+function featureFormatLineEditsToTextEdits(
+  docLines: readonly string[],
+  lineEdits: ReturnType<typeof computeFeatureFormatLineEdits>
+): TextEdit[] {
+  return lineEdits.map((e) => {
+    const len = docLines[e.line]?.length ?? 0;
+    return TextEdit.replace(Range.create(e.line, 0, e.line, len), e.newText);
+  });
+}
 
 connection.onInitialized(async () => {
   try {
@@ -273,6 +287,37 @@ connection.onDefinition((params) => {
     params.position,
     stepIndex.getDefinitions()
   );
+});
+
+connection.onDocumentFormatting((params) => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) {
+    return null;
+  }
+  const lines = doc.getText().split(/\r?\n/);
+  if (lines.length === 0) {
+    return [];
+  }
+  const edits = computeFeatureFormatLineEdits(lines, 0, lines.length - 1, {
+    insertSpaces: params.options.insertSpaces,
+    tabSize: params.options.tabSize
+  });
+  return featureFormatLineEditsToTextEdits(lines, edits);
+});
+
+connection.onDocumentRangeFormatting((params) => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) {
+    return null;
+  }
+  const lines = doc.getText().split(/\r?\n/);
+  const start = params.range.start.line;
+  const end = params.range.end.line;
+  const edits = computeFeatureFormatLineEdits(lines, start, end, {
+    insertSpaces: params.options.insertSpaces,
+    tabSize: params.options.tabSize
+  });
+  return featureFormatLineEditsToTextEdits(lines, edits);
 });
 
 documents.listen(connection);

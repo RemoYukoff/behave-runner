@@ -46,3 +46,9 @@ export {
   BEHAVE_FIND_FEATURE_STEP_LOCATIONS,
   type BehaveFindFeatureStepLocationsParams,
 } from "./lspBehaveRpc";
+
+export {
+  computeFeatureFormatLineEdits,
+  type FeatureFormatOptions,
+  type FeatureLineEdit,
+} from "./featureFormat";
