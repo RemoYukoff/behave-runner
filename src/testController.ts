@@ -31,12 +31,215 @@ import {
 } from "./behaveRunState";
 import {
   clearLiveRunPanel,
+  persistLivePanelCaptureNow,
   postLiveRunMessage,
   revealLiveRunPanel
 } from "./liveRunWebview";
 import { getPythonInterpreterPath } from "./pythonInterpreter";
 
 let behaveRunnerExtensionPath = "";
+
+let behaveHierarchyStoreRef: BehaveHierarchyStore | undefined;
+
+/** Call once from activation with the hierarchy store (needed for Rerun). */
+export function setBehaveHierarchyStoreRef(store: BehaveHierarchyStore): void {
+  behaveHierarchyStoreRef = store;
+}
+
+type SerializedBehaveJob =
+  | { kind: "feature"; fsPath: string }
+  | {
+      kind: "scenario";
+      fsPath: string;
+      scenarioName: string;
+      scenarioItemId: string;
+    };
+
+type LastBehaveRunSnapshot = {
+  mode: "run" | "debug";
+  jobs: SerializedBehaveJob[];
+};
+
+const LAST_RUN_WORKSPACE_KEY = "behaveRunner.lastRunSnapshot.v1";
+
+let lastBehaveRunSnapshot: LastBehaveRunSnapshot | undefined;
+
+let behaveExtensionContext: vscode.ExtensionContext | undefined;
+
+/**
+ * Load/save last-run snapshot for Rerun in this workspace (survives closing the window).
+ */
+export function registerBehaveRunWorkspacePersistence(
+  context: vscode.ExtensionContext
+): void {
+  behaveExtensionContext = context;
+  const raw = context.workspaceState.get<unknown>(LAST_RUN_WORKSPACE_KEY);
+  const restored = parseStoredLastRunSnapshot(raw);
+  if (restored) {
+    lastBehaveRunSnapshot = restored;
+  }
+}
+
+function parseStoredLastRunSnapshot(raw: unknown): LastBehaveRunSnapshot | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const o = raw as Record<string, unknown>;
+  if (o.mode !== "run" && o.mode !== "debug") {
+    return undefined;
+  }
+  if (!Array.isArray(o.jobs) || o.jobs.length === 0) {
+    return undefined;
+  }
+  const jobs: SerializedBehaveJob[] = [];
+  for (const entry of o.jobs) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return undefined;
+    }
+    const j = entry as Record<string, unknown>;
+    const kind = j.kind;
+    if (kind === "feature") {
+      if (typeof j.fsPath !== "string" || j.fsPath.length === 0) {
+        return undefined;
+      }
+      jobs.push({ kind: "feature", fsPath: j.fsPath });
+      continue;
+    }
+    if (kind === "scenario") {
+      if (
+        typeof j.fsPath !== "string" ||
+        j.fsPath.length === 0 ||
+        typeof j.scenarioName !== "string" ||
+        typeof j.scenarioItemId !== "string"
+      ) {
+        return undefined;
+      }
+      jobs.push({
+        kind: "scenario",
+        fsPath: j.fsPath,
+        scenarioName: j.scenarioName,
+        scenarioItemId: j.scenarioItemId
+      });
+      continue;
+    }
+    return undefined;
+  }
+  return { mode: o.mode, jobs };
+}
+
+function persistLastRunSnapshot(snap: LastBehaveRunSnapshot): void {
+  const ctx = behaveExtensionContext;
+  if (!ctx) {
+    return;
+  }
+  void ctx.workspaceState.update(LAST_RUN_WORKSPACE_KEY, snap);
+}
+
+function serializeBehaveJobs(jobs: BehaveJob[]): SerializedBehaveJob[] {
+  return jobs.map((j) =>
+    j.kind === "feature"
+      ? { kind: "feature", fsPath: j.fsPath }
+      : {
+          kind: "scenario",
+          fsPath: j.fsPath,
+          scenarioName: j.scenarioName,
+          scenarioItemId: j.scenarioItem.id
+        }
+  );
+}
+
+function rememberBehaveRun(mode: "run" | "debug", jobs: BehaveJob[]): void {
+  if (jobs.length === 0) {
+    return;
+  }
+  const snap: LastBehaveRunSnapshot = {
+    mode,
+    jobs: serializeBehaveJobs(jobs)
+  };
+  lastBehaveRunSnapshot = snap;
+  persistLastRunSnapshot(snap);
+}
+
+function featureDirectChildren(feature: BehaveHierarchyNode): BehaveHierarchyNode[] {
+  return [...feature.children.values()].filter((ch) => ch.parent === feature);
+}
+
+async function resolveSerializedJobs(
+  store: BehaveHierarchyStore,
+  serialized: SerializedBehaveJob[]
+): Promise<BehaveJob[] | undefined> {
+  const jobs: BehaveJob[] = [];
+  for (const sj of serialized) {
+    const feature = await getFeatureHierarchyNodeForPath(store, sj.fsPath);
+    if (!feature) {
+      void vscode.window.showErrorMessage(
+        `Behave Runner: feature file is no longer available (${sj.fsPath}).`
+      );
+      return undefined;
+    }
+    await resolveBehaveFeatureChildrenIfNeeded(feature);
+    if (sj.kind === "feature") {
+      jobs.push({ kind: "feature", featureItem: feature, fsPath: sj.fsPath });
+      continue;
+    }
+    let scenarioItem = feature.children.get(sj.scenarioItemId);
+    if (!scenarioItem || !scenarioItem.id.startsWith(SCEN_PREFIX)) {
+      for (const ch of featureDirectChildren(feature)) {
+        if (ch.id.startsWith(SCEN_PREFIX) && ch.label === sj.scenarioName) {
+          scenarioItem = ch;
+          break;
+        }
+      }
+    }
+    if (!scenarioItem || !scenarioItem.id.startsWith(SCEN_PREFIX)) {
+      void vscode.window.showErrorMessage(
+        `Behave Runner: scenario "${sj.scenarioName}" not found in ${path.basename(sj.fsPath)}.`
+      );
+      return undefined;
+    }
+    jobs.push({
+      kind: "scenario",
+      featureItem: feature,
+      scenarioItem,
+      scenarioName: sj.scenarioName,
+      fsPath: sj.fsPath
+    });
+  }
+  return jobs;
+}
+
+/** Re-runs the last hierarchy Run or Debug (feature, scenario, or outline batch). */
+export async function rerunLastBehaveRun(): Promise<void> {
+  const snap = lastBehaveRunSnapshot;
+  if (!snap || snap.jobs.length === 0) {
+    void vscode.window.showWarningMessage(
+      "Behave Runner: no previous run to repeat."
+    );
+    return;
+  }
+  const store = behaveHierarchyStoreRef;
+  if (!store) {
+    void vscode.window.showErrorMessage(
+      "Behave Runner: hierarchy store is not ready."
+    );
+    return;
+  }
+  const jobs = await resolveSerializedJobs(store, snap.jobs);
+  if (!jobs) {
+    return;
+  }
+  const cts = new vscode.CancellationTokenSource();
+  try {
+    await revealLiveRunPanel();
+    if (snap.mode === "run") {
+      await runBehaveJobs(jobs, cts.token, behaveRunnerExtensionPath);
+    } else {
+      await runBehaveDebugJobs(jobs, cts.token);
+    }
+  } finally {
+    cts.dispose();
+  }
+}
 
 let behaveOutputChannel: vscode.OutputChannel | undefined;
 
@@ -249,6 +452,7 @@ export async function runBehaveDebugJobs(
   jobs: BehaveJob[],
   token: vscode.CancellationToken
 ): Promise<void> {
+  rememberBehaveRun("debug", jobs);
   const runCts = takeOverActiveRunCancellation();
   const parentReg = token.onCancellationRequested(() => runCts.cancel());
   try {
@@ -657,6 +861,7 @@ async function runBehaveJobs(
   token: vscode.CancellationToken,
   extensionPath: string
 ): Promise<void> {
+  rememberBehaveRun("run", jobs);
   const runCts = takeOverActiveRunCancellation();
   const parentReg = token.onCancellationRequested(() => runCts.cancel());
   clearBehaveRunState();
@@ -681,6 +886,7 @@ async function runBehaveJobs(
   } finally {
     parentReg.dispose();
     releaseActiveRunCancellation(runCts);
+    persistLivePanelCaptureNow();
   }
 }
 

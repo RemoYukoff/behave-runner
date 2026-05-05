@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+  <meta http-equiv="Content-Security-Policy" content="BEHAVE_RUN_CSP_PLACEHOLDER" />
   <title>Behave Live run</title>
+  BEHAVE_RUN_CODICON_LINK_PLACEHOLDER
   <style>
     html, body {
       height: 100%;
@@ -33,7 +34,6 @@
       align-items: center;
       box-sizing: border-box;
       margin: 0;
-      padding: 4px;
       border-bottom: 1px solid
         var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
       background: var(
@@ -53,7 +53,6 @@
       min-width: 28px;
       min-height: 28px;
       border: none;
-      border-radius: 5px;
       background: transparent;
       color: var(--vscode-icon-foreground, var(--vscode-foreground, #ccc));
       cursor: pointer;
@@ -70,16 +69,19 @@
       outline: 1px solid var(--vscode-focusBorder);
       outline-offset: -1px;
     }
-    .live-toolbar-btn svg {
-      display: block;
-      width: 16px;
-      height: 16px;
+    .live-toolbar-btn .codicon {
+      font-size: 16px;
     }
-    .live-toolbar-btn--stop svg {
+    .live-toolbar-btn--rerun .codicon {
+      color: var(--vscode-testing-iconPassed, #89d185);
+    }
+    .live-toolbar-btn--rerun:hover .codicon {
+      filter: brightness(1.15);
+    }
+    .live-toolbar-btn--stop .codicon {
       color: var(--vscode-errorForeground, #d83b3b);
-      fill: currentColor;
     }
-    .live-toolbar-btn--stop:hover svg {
+    .live-toolbar-btn--stop:hover .codicon {
       color: var(--vscode-errorForeground, #e85555);
     }
     .view-body {
@@ -291,34 +293,21 @@
       line-height: 1.2;
       flex-shrink: 0;
     }
-    .tree-row-icon.icon-pass { color: var(--vscode-testing-iconPassed, #89d185); }
-    .tree-row-icon.icon-fail { color: var(--vscode-testing-iconFailed, #f48771); }
-    .tree-row-icon.icon-skip {
-      position: relative;
-      color: var(--vscode-testing-iconSkipped, var(--vscode-descriptionForeground, #848484));
-      font-size: 14px;
-      line-height: 1;
-    }
-    .tree-row-icon.icon-pending {
-      opacity: 1;
-      pointer-events: none;
+    .tree-row-icon.codicon {
+      font: normal normal normal 14px/1 codicon;
       display: inline-flex;
       align-items: center;
       justify-content: center;
     }
-    .tree-row-icon.icon-pending::before {
-      content: "";
-      display: block;
-      width: 11px;
-      height: 11px;
-      border: 2px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
-      border-top-color: var(--vscode-foreground, #cccccc);
-      border-radius: 50%;
-      box-sizing: border-box;
-      animation: behave-live-spin 0.7s linear infinite;
+    .tree-row-icon.icon-pass { color: var(--vscode-testing-iconPassed, #89d185); }
+    .tree-row-icon.icon-fail { color: var(--vscode-testing-iconFailed, #f48771); }
+    .tree-row-icon.icon-skip {
+      color: var(--vscode-testing-iconSkipped, var(--vscode-descriptionForeground, #848484));
     }
-    @keyframes behave-live-spin {
-      to { transform: rotate(360deg); }
+    .tree-row-icon.icon-pending {
+      opacity: 1;
+      pointer-events: none;
+      color: var(--vscode-icon-foreground, var(--vscode-foreground, #cccccc));
     }
     .tree-row-icon.icon-none {
       opacity: 0;
@@ -390,19 +379,21 @@
     <header class="live-toolbar" aria-label="Live run actions">
       <button
         type="button"
+        class="live-toolbar-btn live-toolbar-btn--rerun"
+        id="btnRerun"
+        title="Rerun last run"
+        aria-label="Rerun last run"
+      >
+        <i class="codicon codicon-debug-rerun" aria-hidden="true"></i>
+      </button>
+      <button
+        type="button"
         class="live-toolbar-btn live-toolbar-btn--stop"
         id="btnStop"
         title="Stop"
         aria-label="Stop"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          aria-hidden="true"
-        >
-          <path d="M4 4h8v8H4V4z" />
-        </svg>
+        <i class="codicon codicon-debug-stop" aria-hidden="true"></i>
       </button>
     </header>
     <div class="view-body">
@@ -530,12 +521,21 @@
       });
 
       function setRowIcon(iconSpan, kind) {
-        iconSpan.className = "tree-row-icon icon-" + (kind || "none");
-        if (kind === "pass") iconSpan.textContent = String.fromCharCode(0x2713);
-        else if (kind === "fail") iconSpan.textContent = String.fromCharCode(0x2717);
-        else if (kind === "skip") iconSpan.textContent = String.fromCharCode(0x2298);
-        else if (kind === "pending") iconSpan.textContent = "";
-        else iconSpan.textContent = String.fromCharCode(0x2003);
+        iconSpan.textContent = "";
+        var k = kind || "none";
+        var base = "tree-row-icon icon-" + k;
+        if (k === "pass") {
+          iconSpan.className = base + " codicon codicon-pass";
+        } else if (k === "fail") {
+          iconSpan.className = base + " codicon codicon-error";
+        } else if (k === "skip") {
+          iconSpan.className = base + " codicon codicon-circle-slash";
+        } else if (k === "pending") {
+          iconSpan.className =
+            base + " codicon codicon-loading codicon-modifier-spin";
+        } else {
+          iconSpan.className = base;
+        }
       }
 
       function stepIsFail(status) {
@@ -1029,9 +1029,15 @@
         syncRunLayoutVisibility();
       }
 
-      window.addEventListener("message", function (e) {
-        var m = e.data;
+      function handleLivePanelPayload(m) {
         if (!m || typeof m !== "object") return;
+        if (m.type === "replayCapture" && Array.isArray(m.messages)) {
+          for (var ri = 0; ri < m.messages.length; ri++) {
+            handleLivePanelPayload(m.messages[ri]);
+          }
+          syncRunLayoutVisibility();
+          return;
+        }
         if (m.type === "clear") {
           treeRoot.innerHTML = "";
           featureBody = null;
@@ -1235,15 +1241,30 @@
           refreshFeatureIcon();
           treeRoot.scrollTop = treeRoot.scrollHeight;
         }
+      }
+
+      window.addEventListener("message", function (e) {
+        handleLivePanelPayload(e.data);
       });
 
       syncRunLayoutVisibility();
+
+      var btnRerun = document.getElementById("btnRerun");
+      if (btnRerun && vscodeApi) {
+        btnRerun.addEventListener("click", function () {
+          vscodeApi.postMessage({ type: "rerunLastRun" });
+        });
+      }
 
       var btnStop = document.getElementById("btnStop");
       if (btnStop && vscodeApi) {
         btnStop.addEventListener("click", function () {
           vscodeApi.postMessage({ type: "stopRun" });
         });
+      }
+
+      if (vscodeApi) {
+        vscodeApi.postMessage({ type: "livePanelReady" });
       }
 
     })();

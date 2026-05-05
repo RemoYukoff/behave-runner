@@ -106,7 +106,12 @@
     "scripts": {
         "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
-        "vscode:prepublish": "npm run compile"
+        "copy-codicons": "node -e \"const fs=require('fs'),p=require('path');const r=p.join('node_modules','@vscode','codicons','dist');const d=p.join('media','codicons');if(!fs.existsSync(p.join(r,'codicon.css'))){console.warn('Behave Runner: @vscode/codicons not installed; skip copy-codicons');process.exit(0);}fs.mkdirSync(d,{recursive:true});['codicon.css','codicon.ttf'].forEach(f=>fs.copyFileSync(p.join(r,f),p.join(d,f)));\"",
+        "prepare": "npm run copy-codicons",
+        "vscode:prepublish": "npm run compile && npm run copy-codicons"
+    },
+    "dependencies": {
+        "@vscode/codicons": "^0.0.45"
     },
     "devDependencies": {
         "@types/node": "^20.0.0",

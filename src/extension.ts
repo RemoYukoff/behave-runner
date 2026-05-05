@@ -5,6 +5,9 @@ import { registerLiveRunWebview, revealLiveRunPanel } from "./liveRunWebview";
 import {
   cancelActiveBehaveRun,
   registerBehaveOutputChannel,
+  registerBehaveRunWorkspacePersistence,
+  rerunLastBehaveRun,
+  setBehaveHierarchyStoreRef,
   setBehaveRunnerExtensionPath
 } from "./testController";
 import type { RunScenarioArgs } from "./types";
@@ -107,13 +110,18 @@ async function activateBehaveRunner(
 
   registerLiveRunWebview(context);
   setBehaveRunnerExtensionPath(context.extensionPath ?? "");
+  registerBehaveRunWorkspacePersistence(context);
   registerBehaveOutputChannel(context);
   context.subscriptions.push(
     vscode.commands.registerCommand("behaveRunner.cancelRun", () => {
       cancelActiveBehaveRun();
+    }),
+    vscode.commands.registerCommand("behaveRunner.rerunLastRun", () => {
+      void rerunLastBehaveRun();
     })
   );
   const behaveStore = registerBehaveHierarchyStore(context);
+  setBehaveHierarchyStoreRef(behaveStore);
   registerBehaveCodeLens(context, behaveStore);
 
   const debugScenarioCommand = vscode.commands.registerCommand(
