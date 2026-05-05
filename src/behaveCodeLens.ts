@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import type { BehaveHierarchyStore } from "./behaveHierarchyModel";
 import { parseFeatureFile } from "./featureParser";
 import {
-  getBackgroundNodeForPath,
   getFeatureHierarchyNodeForPath,
   getScenarioNodeAtLine,
   getScenarioOutlineExpansionNodes,
@@ -43,22 +42,6 @@ class BehaveCodeLensProvider implements vscode.CodeLensProvider {
         arguments: [fsPath]
       })
     );
-
-    if (parsed.background && parsed.background.steps.length > 0) {
-      const r = lineRange(document, parsed.background.line);
-      lenses.push(
-        new vscode.CodeLens(r, {
-          title: "$(play) Run",
-          command: "behaveRunner.editor.runBackground",
-          arguments: [fsPath]
-        }),
-        new vscode.CodeLens(r, {
-          title: "$(debug-alt) Debug",
-          command: "behaveRunner.editor.debugBackground",
-          arguments: [fsPath]
-        })
-      );
-    }
 
     for (const sc of parsed.scenarios) {
       if (sc.isOutline && sc.outlineExpansions && sc.outlineExpansions.length > 0) {
@@ -146,40 +129,6 @@ export function registerBehaveCodeLens(
       void vscode.window.showErrorMessage(
         "Behave Runner: feature file is not part of the workspace discovery patterns."
       );
-      return;
-    }
-    const cts = new vscode.CancellationTokenSource();
-    try {
-      await runBehaveHierarchyDebugSelection([node], cts.token);
-    } finally {
-      cts.dispose();
-    }
-  };
-
-  const runBackground = async (fsPath: string): Promise<void> => {
-    let node = await getBackgroundNodeForPath(store, fsPath);
-    if (!node) {
-      node = await getFeatureHierarchyNodeForPath(store, fsPath);
-    }
-    if (!node) {
-      void vscode.window.showErrorMessage("Behave Runner: could not resolve Background.");
-      return;
-    }
-    const cts = new vscode.CancellationTokenSource();
-    try {
-      await runBehaveHierarchySelection([node], cts.token);
-    } finally {
-      cts.dispose();
-    }
-  };
-
-  const debugBackground = async (fsPath: string): Promise<void> => {
-    let node = await getBackgroundNodeForPath(store, fsPath);
-    if (!node) {
-      node = await getFeatureHierarchyNodeForPath(store, fsPath);
-    }
-    if (!node) {
-      void vscode.window.showErrorMessage("Behave Runner: could not resolve Background.");
       return;
     }
     const cts = new vscode.CancellationTokenSource();
@@ -279,14 +228,6 @@ export function registerBehaveCodeLens(
     vscode.commands.registerCommand(
       "behaveRunner.editor.debugFeature",
       debugFeature
-    ),
-    vscode.commands.registerCommand(
-      "behaveRunner.editor.runBackground",
-      runBackground
-    ),
-    vscode.commands.registerCommand(
-      "behaveRunner.editor.debugBackground",
-      debugBackground
     ),
     vscode.commands.registerCommand(
       "behaveRunner.editor.runScenario",

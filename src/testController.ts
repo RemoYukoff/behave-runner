@@ -40,6 +40,28 @@ let behaveRunnerExtensionPath = "";
 
 let behaveOutputChannel: vscode.OutputChannel | undefined;
 
+/** Merged with caller token so the Live panel Stop button can cancel the active run. */
+let activeRunCancellation: vscode.CancellationTokenSource | undefined;
+
+function takeOverActiveRunCancellation(): vscode.CancellationTokenSource {
+  activeRunCancellation?.cancel();
+  const cts = new vscode.CancellationTokenSource();
+  activeRunCancellation = cts;
+  return cts;
+}
+
+function releaseActiveRunCancellation(cts: vscode.CancellationTokenSource): void {
+  if (activeRunCancellation === cts) {
+    activeRunCancellation = undefined;
+  }
+  cts.dispose();
+}
+
+/** Cancels the current Behave run (spawned via Test UI / gutter) or requests the debugger to stop. */
+export function cancelActiveBehaveRun(): void {
+  activeRunCancellation?.cancel();
+}
+
 function getBehaveOutputChannel(): vscode.OutputChannel {
   if (!behaveOutputChannel) {
     behaveOutputChannel = vscode.window.createOutputChannel("Behave Runner");
@@ -227,58 +249,76 @@ export async function runBehaveDebugJobs(
   jobs: BehaveJob[],
   token: vscode.CancellationToken
 ): Promise<void> {
-  for (const job of jobs) {
-    if (token.isCancellationRequested) {
-      break;
-    }
-    const workspaceRoot = getWorkspaceRootForFile(job.fsPath);
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(
-      vscode.Uri.file(job.fsPath)
-    );
-    const resourceUri = vscode.Uri.file(job.fsPath);
-    const justMyCode = vscode.workspace
-      .getConfiguration("behaveRunner", resourceUri)
-      .get<boolean>("debug.justMyCode", true);
-
-    const debugArgs =
-      job.kind === "feature"
-        ? [job.fsPath]
-        : [job.fsPath, "-n", job.scenarioName];
-
-    const debugConfig: vscode.DebugConfiguration = {
-      type: "python",
-      request: "launch",
-      name:
-        job.kind === "feature"
-          ? "Behave: Feature"
-          : `Behave: ${job.scenarioName}`,
-      module: "behave",
-      args: debugArgs,
-      cwd: workspaceRoot,
-      console: "integratedTerminal",
-      justMyCode
-    };
-
-    const started = await vscode.debug.startDebugging(
-      workspaceFolder ?? undefined,
-      debugConfig
-    );
-    if (!started) {
-      vscode.window.showErrorMessage(
-        "Behave Runner: failed to start debugger."
+  const runCts = takeOverActiveRunCancellation();
+  const parentReg = token.onCancellationRequested(() => runCts.cancel());
+  try {
+    for (const job of jobs) {
+      if (runCts.token.isCancellationRequested) {
+        break;
+      }
+      const workspaceRoot = getWorkspaceRootForFile(job.fsPath);
+      const workspaceFolder = vscode.workspace.getWorkspaceFolder(
+        vscode.Uri.file(job.fsPath)
       );
-      break;
+      const resourceUri = vscode.Uri.file(job.fsPath);
+      const justMyCode = vscode.workspace
+        .getConfiguration("behaveRunner", resourceUri)
+        .get<boolean>("debug.justMyCode", true);
+
+      const debugArgs =
+        job.kind === "feature"
+          ? [job.fsPath]
+          : [job.fsPath, "-n", job.scenarioName];
+
+      const debugConfig: vscode.DebugConfiguration = {
+        type: "python",
+        request: "launch",
+        name:
+          job.kind === "feature"
+            ? "Behave: Feature"
+            : `Behave: ${job.scenarioName}`,
+        module: "behave",
+        args: debugArgs,
+        cwd: workspaceRoot,
+        console: "integratedTerminal",
+        justMyCode
+      };
+
+      const started = await vscode.debug.startDebugging(
+        workspaceFolder ?? undefined,
+        debugConfig
+      );
+      if (!started) {
+        vscode.window.showErrorMessage(
+          "Behave Runner: failed to start debugger."
+        );
+        break;
+      }
+      await new Promise<void>((resolvePromise) => {
+        let settled = false;
+        let sub: vscode.Disposable | undefined;
+        let cancelReg: vscode.Disposable | undefined;
+        const finish = (): void => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          sub?.dispose();
+          cancelReg?.dispose();
+          resolvePromise();
+        };
+        sub = vscode.debug.onDidTerminateDebugSession(() => {
+          finish();
+        });
+        cancelReg = runCts.token.onCancellationRequested(() => {
+          void vscode.debug.stopDebugging();
+          finish();
+        });
+      });
     }
-    await new Promise<void>((resolvePromise) => {
-      const sub = vscode.debug.onDidTerminateDebugSession(() => {
-        sub.dispose();
-        resolvePromise();
-      });
-      token.onCancellationRequested(() => {
-        sub.dispose();
-        resolvePromise();
-      });
-    });
+  } finally {
+    parentReg.dispose();
+    releaseActiveRunCancellation(runCts);
   }
 }
 
@@ -288,7 +328,6 @@ function spawnBehave(
   interpreterPath: string | undefined,
   jsonReportPath: string,
   opts: {
-    includePlainToStdout: boolean;
     liveStream: boolean;
     liveFormatterPythonRoot: string | undefined;
   }
@@ -298,16 +337,6 @@ function spawnBehave(
   if (opts.liveStream && opts.liveFormatterPythonRoot) {
     // Avoid Behave's plain-text summary on stdout (mixed with NDJSON / step prints).
     behaveArgs.push("--no-summary", "-f", "behave_runner_live:BehaveRunnerLiveFormatter");
-  }
-  if (opts.includePlainToStdout && !opts.liveStream) {
-    behaveArgs.push(
-      "-f",
-      "plain",
-      "--no-color",
-      "--no-summary",
-      "--no-snippets",
-      "--show-source"
-    );
   }
   if (job.kind === "feature") {
     behaveArgs.push(job.fsPath);
@@ -370,32 +399,16 @@ async function runBehaveJob(
   const workspaceRoot = getWorkspaceRootForFile(fsPath);
   const interpreter = getPythonInterpreterPath(fsPath, workspaceRoot);
 
-  const resourceUri = vscode.Uri.file(fsPath);
-
-  const showBehaveRawOutput = vscode.workspace
-    .getConfiguration("behaveRunner", resourceUri)
-    .get<boolean>("run.showBehaveRawOutput", false);
-
-  const liveStreamRequested = vscode.workspace
-    .getConfiguration("behaveRunner", resourceUri)
-    .get<boolean>("run.liveStream", true);
-
   const liveFormatterRoot = liveFormatterBundlePath(extensionPath);
   const liveBundlePresent = fs.existsSync(
     path.join(liveFormatterRoot, "behave_runner_live", "__init__.py")
   );
-  const useLiveStream =
-    liveStreamRequested && liveBundlePresent && extensionPath.length > 0;
+  /** Live run panel and NDJSON are driven only by this path when the formatter bundle exists. */
+  const useLiveStream = liveBundlePresent && extensionPath.length > 0;
 
-  if (liveStreamRequested && !liveBundlePresent && extensionPath.length > 0) {
+  if (!liveBundlePresent && extensionPath.length > 0) {
     appendRunOutput(
       "[Behave Runner] Live stream formatter bundle missing; install/rebuild the extension.\r\n"
-    );
-  }
-
-  if (showBehaveRawOutput && useLiveStream) {
-    appendRunOutput(
-      "[Behave Runner] Plain stdout is disabled while live stream is enabled.\r\n"
     );
   }
 
@@ -411,9 +424,11 @@ async function runBehaveJob(
     enqueueAndStartScenarioItems(runJob, featureItem);
     jobItemsPrimed = true;
 
-    if (useLiveStream && !liveOpts?.skipLivePanelReset) {
+    if (!liveOpts?.skipLivePanelReset) {
       clearLiveRunPanel();
-      postLiveRunMessage({ type: "feature", label: featureItem.label });
+      if (useLiveStream) {
+        postLiveRunMessage({ type: "feature", label: featureItem.label });
+      }
     }
 
     const liveJob: LiveStreamJob =
@@ -495,7 +510,6 @@ async function runBehaveJob(
     };
 
     const proc = spawnBehave(runJob, workspaceRoot, interpreter.path, tmpJson, {
-      includePlainToStdout: showBehaveRawOutput,
       liveStream: useLiveStream,
       liveFormatterPythonRoot: useLiveStream ? liveFormatterRoot : undefined
     });
@@ -509,15 +523,15 @@ async function runBehaveJob(
         const text = chunk.toString();
         if (useLiveStream) {
           for (const line of ndjsonBuf.consumeChunk(text)) {
+            appendRunOutput(line);
             const ev = parseLiveStreamLine(line);
             if (ev) {
               dispatchLiveStreamEvent(ev, liveDispatchCtx);
             } else {
               pendingPlainStdout += line + "\n";
-              appendRunOutput(`${line}\r\n`);
             }
           }
-        } else if (showBehaveRawOutput) {
+        } else {
           appendRunOutput(text);
         }
       };
@@ -547,21 +561,13 @@ async function runBehaveJob(
         if (useLiveStream) {
           const tail = ndjsonBuf.flushLine();
           if (tail) {
+            appendRunOutput(tail);
             const ev = parseLiveStreamLine(tail);
             if (ev) {
               dispatchLiveStreamEvent(ev, liveDispatchCtx);
             } else {
               pendingPlainStdout += tail + "\n";
-              appendRunOutput(`${tail}\r\n`);
             }
-          }
-          const leftover = pendingPlainStdout;
-          if (leftover.length > 0) {
-            const n = leftover.includes("\r\n")
-              ? leftover
-              : leftover.replace(/\n/g, "\r\n");
-            appendRunOutput(n.endsWith("\r\n") ? n : n + "\r\n");
-            pendingPlainStdout = "";
           }
         }
         resolvePromise();
@@ -639,6 +645,9 @@ async function runBehaveJob(
       );
     }
   } finally {
+    if (token.isCancellationRequested) {
+      postLiveRunMessage({ type: "runCancelled" });
+    }
     await fs.promises.rm(tmpDir, { recursive: true }).catch(() => {});
   }
 }
@@ -648,6 +657,8 @@ async function runBehaveJobs(
   token: vscode.CancellationToken,
   extensionPath: string
 ): Promise<void> {
+  const runCts = takeOverActiveRunCancellation();
+  const parentReg = token.onCancellationRequested(() => runCts.cancel());
   clearBehaveRunState();
   try {
     const batchSameFeatureScenarios =
@@ -656,10 +667,10 @@ async function runBehaveJobs(
       jobs.every((j) => j.fsPath === jobs[0].fsPath);
 
     for (let i = 0; i < jobs.length; i++) {
-      if (token.isCancellationRequested) {
+      if (runCts.token.isCancellationRequested) {
         break;
       }
-      await runBehaveJob(jobs[i], token, extensionPath, {
+      await runBehaveJob(jobs[i], runCts.token, extensionPath, {
         skipLivePanelReset: batchSameFeatureScenarios && i > 0
       });
     }
@@ -667,6 +678,9 @@ async function runBehaveJobs(
     const msg = e instanceof Error ? e.message : String(e);
     appendRunOutput(`Behave Runner error: ${msg}\r\n`);
     void vscode.window.showErrorMessage(`Behave Runner: ${msg}`);
+  } finally {
+    parentReg.dispose();
+    releaseActiveRunCancellation(runCts);
   }
 }
 
@@ -711,18 +725,6 @@ export async function getFeatureHierarchyNodeForPath(
     feature = store.getFeatureByFsPath(fsPath);
   }
   return feature;
-}
-
-export async function getBackgroundNodeForPath(
-  store: BehaveHierarchyStore,
-  fsPath: string
-): Promise<BehaveHierarchyNode | undefined> {
-  const feature = await getFeatureHierarchyNodeForPath(store, fsPath);
-  if (!feature) {
-    return undefined;
-  }
-  await resolveBehaveFeatureChildrenIfNeeded(feature);
-  return feature.children.get(BG_PREFIX + encodeURIComponent(fsPath));
 }
 
 export async function getScenarioNodeAtLine(

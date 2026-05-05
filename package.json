@@ -50,48 +50,6 @@
                 "path": "./syntaxes/behave.tmLanguage.json"
             }
         ],
-        "commands": [
-            {
-                "command": "behaveRunner.debugScenario",
-                "title": "Debug Behave Scenario"
-            },
-            {
-                "command": "behaveRunner.showLiveRun",
-                "title": "Behave Runner: Show Live Run View"
-            },
-            {
-                "command": "behaveRunner.editor.runFeature",
-                "title": "Behave Runner: Run Feature"
-            },
-            {
-                "command": "behaveRunner.editor.debugFeature",
-                "title": "Behave Runner: Debug Feature"
-            },
-            {
-                "command": "behaveRunner.editor.runBackground",
-                "title": "Behave Runner: Run Background"
-            },
-            {
-                "command": "behaveRunner.editor.debugBackground",
-                "title": "Behave Runner: Debug Background"
-            },
-            {
-                "command": "behaveRunner.editor.runScenario",
-                "title": "Behave Runner: Run Scenario"
-            },
-            {
-                "command": "behaveRunner.editor.debugScenario",
-                "title": "Behave Runner: Debug Scenario (editor)"
-            },
-            {
-                "command": "behaveRunner.editor.runScenarioOutline",
-                "title": "Behave Runner: Run Scenario Outline (all examples)"
-            },
-            {
-                "command": "behaveRunner.editor.debugScenarioOutline",
-                "title": "Behave Runner: Debug Scenario Outline (all examples)"
-            }
-        ],
         "viewsContainers": {
             "panel": [
                 {
@@ -118,16 +76,6 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Only debug user code when running Behave in debug mode."
-                },
-                "behaveRunner.run.showBehaveRawOutput": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Also run the plain formatter to stdout (in addition to the JSON report). Ignored while live stream is enabled (stdout is reserved for NDJSON)."
-                },
-                "behaveRunner.run.liveStream": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Stream step progress in real time using the bundled Behave formatter (NDJSON on stdout). Final pass/fail still uses the JSON report. Requires Behave with Formatter API (e.g. >= 1.2.6)."
                 },
                 "behaveRunner.stepDefinitions.patterns": {
                     "type": "array",

@@ -11,7 +11,7 @@ Use the **Testing** view and the **gutter** next to `Feature:` / `Scenario:` lin
 - **Left-click** the gutter icon → run with the selected **Run** profile (Behave in Test Results).
 - **Right-click** the gutter icon → context menu with **Run**, **Debug**, **Reveal in Test Explorer**, etc.
 - Expand tests in the Testing sidebar to run or debug a whole feature or a single scenario.
-- **Test Results** output is grouped under each feature, scenario, and step (not a flat Behave log). Set `behaveRunner.run.showBehaveRawOutput` to `true` if you need the full Behave stream.
+- **Behave Runner** in the Output panel shows everything Behave writes to stdout and stderr. **Test Results** output is grouped under each feature, scenario, and step.
 
 ### Go to Step Definition
 

@@ -66,6 +66,25 @@ def _step_error_text(step: Any) -> Optional[str]:
     return "\n\n".join(parts)
 
 
+def _status_name(obj: Any) -> str:
+    st = getattr(obj, "status", None)
+    if st is None:
+        return "unknown"
+    name = getattr(st, "name", None)
+    if isinstance(name, str):
+        return name.lower()
+    return str(st).lower()
+
+
+def _scenario_location(scenario: Any) -> str:
+    loc = getattr(scenario, "location", None)
+    if not loc:
+        return ""
+    fn = getattr(loc, "filename", "") or ""
+    line = getattr(loc, "line", "") or ""
+    return f"{fn}:{line}"
+
+
 class BehaveRunnerLiveFormatter(Formatter):
     """NDJSON stream on stdout; use as second formatter (stdout) alongside JSON file."""
 
@@ -76,19 +95,50 @@ class BehaveRunnerLiveFormatter(Formatter):
         super().__init__(stream_opener, config)
         self._feature_name: Optional[str] = None
         self._scenario_name: Optional[str] = None
+        self._feature_ref: Any = None
+        self._scenario_ref: Any = None
+        self._step_queue: list[Any] = []
+
+    def _emit_feature_finished_if_any(self) -> None:
+        if self._feature_ref is None:
+            return
+        _emit(
+            {
+                "event": "feature_finished",
+                "feature": self._feature_name,
+                "status": _status_name(self._feature_ref),
+            }
+        )
+        self._feature_ref = None
+
+    def _emit_scenario_finished_if_any(self) -> None:
+        if self._scenario_ref is None:
+            return
+        _emit(
+            {
+                "event": "scenario_finished",
+                "feature": self._feature_name,
+                "scenario": self._scenario_name,
+                "location": _scenario_location(self._scenario_ref),
+                "status": _status_name(self._scenario_ref),
+            }
+        )
+        self._scenario_ref = None
 
     def feature(self, feature):
+        self._emit_scenario_finished_if_any()
+        self._emit_feature_finished_if_any()
         self._feature_name = getattr(feature, "name", None) or ""
+        self._feature_ref = feature
+        self._step_queue.clear()
 
     def scenario(self, scenario):
+        self._emit_scenario_finished_if_any()
+        self._step_queue.clear()
         name = getattr(scenario, "name", None) or ""
         self._scenario_name = name
-        loc = getattr(scenario, "location", None)
-        location = ""
-        if loc:
-            fn = getattr(loc, "filename", "") or ""
-            line = getattr(loc, "line", "") or ""
-            location = f"{fn}:{line}"
+        self._scenario_ref = scenario
+        location = _scenario_location(scenario)
         _emit(
             {
                 "event": "scenario_started",
@@ -102,7 +152,29 @@ class BehaveRunnerLiveFormatter(Formatter):
         # Background model precedes scenarios; keep output tied to following scenario(s).
         pass
 
+    def step(self, step):
+        self._step_queue.append(step)
+
+    def match(self, _match):
+        if not self._step_queue:
+            return
+        step = self._step_queue[0]
+        keyword = getattr(step, "keyword", "") or ""
+        step_name = getattr(step, "name", "") or ""
+        _emit(
+            {
+                "event": "step_started",
+                "feature": self._feature_name,
+                "scenario": self._scenario_name,
+                "location": _step_location(step),
+                "keyword": keyword,
+                "step": step_name,
+            }
+        )
+
     def result(self, step):
+        if self._step_queue and self._step_queue[0] is step:
+            self._step_queue.pop(0)
         try:
             keyword = getattr(step, "keyword", "") or ""
             step_name = getattr(step, "name", "") or ""
@@ -120,3 +192,7 @@ class BehaveRunnerLiveFormatter(Formatter):
             )
         except Exception as exc:  # noqa: BLE001 — keep Behave run alive
             _emit({"event": "formatter_error", "message": str(exc)})
+
+    def eof(self):
+        self._emit_scenario_finished_if_any()
+        self._emit_feature_finished_if_any()

@@ -15,6 +15,12 @@ def step_wait(context, seconds):
     time.sleep(seconds)
 
 
+@step("I simulate a slow step for {seconds:d} seconds")
+def step_slow_spinner_demo(context, seconds):
+    emit("step_slow_spinner_demo", seconds=seconds)
+    time.sleep(seconds)
+
+
 @step("the system is ready")
 def step_system_ready(context):
     emit("step_system_ready")

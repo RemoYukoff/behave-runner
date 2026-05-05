@@ -3,6 +3,7 @@ import { registerBehaveCodeLens } from "./behaveCodeLens";
 import { registerBehaveHierarchyStore } from "./behaveHierarchyModel";
 import { registerLiveRunWebview, revealLiveRunPanel } from "./liveRunWebview";
 import {
+  cancelActiveBehaveRun,
   registerBehaveOutputChannel,
   setBehaveRunnerExtensionPath
 } from "./testController";
@@ -107,6 +108,11 @@ async function activateBehaveRunner(
   registerLiveRunWebview(context);
   setBehaveRunnerExtensionPath(context.extensionPath ?? "");
   registerBehaveOutputChannel(context);
+  context.subscriptions.push(
+    vscode.commands.registerCommand("behaveRunner.cancelRun", () => {
+      cancelActiveBehaveRun();
+    })
+  );
   const behaveStore = registerBehaveHierarchyStore(context);
   registerBehaveCodeLens(context, behaveStore);
 

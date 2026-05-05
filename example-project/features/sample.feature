@@ -211,3 +211,13 @@ Feature: Go to Definition Test Cases
   Scenario: Multiple definitions with single quotes
     Given the value is 'test456'
     Then the value equals 'test456'
+
+  # =========================================================================
+  # Live run spinner demo
+  # =========================================================================
+
+  Scenario: Spinner demo with 2-second sleep
+    Given the first number is 10
+    When I simulate a slow step for 2 seconds
+    And I add 0
+    Then the result is 10
