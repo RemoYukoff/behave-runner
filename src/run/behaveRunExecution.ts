@@ -89,35 +89,7 @@ async function runBehaveJob(
 
   let exitCode = 0;
 
-  let pendingLiveStderr = "";
-  let attachLiveStderrToStepKey: string | undefined;
-  let lastLiveStepScenarioKey = "";
-
   function livePanelSinkWrap(message: LivePanelToWebviewMessage): void {
-    if (message.type === "feature" || message.type === "scenario") {
-      pendingLiveStderr = "";
-      attachLiveStderrToStepKey = undefined;
-    } else if (message.type === "step") {
-      lastLiveStepScenarioKey = message.scenarioKey;
-      const st = message.status.toLowerCase();
-      const failed = st === "failed" || st === "error";
-      if (failed) {
-        const pend = pendingLiveStderr;
-        pendingLiveStderr = "";
-        if (pend.trim()) {
-          const lt = message.logText;
-          const sep = lt.length > 0 && !lt.endsWith("\n") ? "\n" : "";
-          message.logText = lt + sep + pend;
-          const er = message.error;
-          message.error = er ? `${er}\n\n${pend}` : pend;
-        }
-        attachLiveStderrToStepKey =
-          message.stepKey.length > 0 ? message.stepKey : undefined;
-      } else {
-        attachLiveStderrToStepKey = undefined;
-        pendingLiveStderr = "";
-      }
-    }
     sinks.livePanel.post(message);
   }
 
@@ -170,6 +142,7 @@ async function runBehaveJob(
       const onStdoutChunk = (chunk: Buffer): void => {
         const text = chunk.toString();
         for (const line of ndjsonBuf.consumeChunk(text)) {
+          /* Full stdout mirror (including NDJSON) for the Output channel — debuggable trace; the Live panel stays human-only via structured messages. */
           sinks.output.append(line);
           const ev = parseLiveStreamLine(line);
           if (ev) {
@@ -182,18 +155,8 @@ async function runBehaveJob(
 
       proc.stdout.on("data", onStdoutChunk);
       proc.stderr.on("data", (chunk: Buffer) => {
-        const t = chunk.toString();
-        sinks.output.append(t);
-        if (attachLiveStderrToStepKey) {
-          sinks.livePanel.post({
-            type: "step_log_append",
-            stepKey: attachLiveStderrToStepKey,
-            scenarioKey: lastLiveStepScenarioKey,
-            text: t
-          });
-        } else {
-          pendingLiveStderr += t;
-        }
+        /* Shell wrapper noise only: Behave stderr is merged into stdout via 2>&1. */
+        sinks.output.append(chunk.toString());
       });
       proc.on("error", (err) => {
         rejectPromise(err);

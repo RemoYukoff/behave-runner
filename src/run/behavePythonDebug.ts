@@ -42,7 +42,9 @@ export function buildPythonBehaveDebugLaunch(
     args: debugArgs,
     cwd: workspaceRoot,
     console: "integratedTerminal",
-    justMyCode
+    justMyCode,
+    pythonArgs: ["-u"],
+    env: { PYTHONUNBUFFERED: "1" }
   };
 
   return { workspaceRoot, workspaceFolder: workspaceFolder ?? undefined, config };
@@ -73,7 +75,9 @@ export function buildPythonBehaveDebugLaunchFromCliArgs(args: {
     args: debugArgs,
     cwd: args.workspaceRoot,
     console: "integratedTerminal",
-    justMyCode: args.justMyCode
+    justMyCode: args.justMyCode,
+    pythonArgs: ["-u"],
+    env: { PYTHONUNBUFFERED: "1" }
   };
 
   return {

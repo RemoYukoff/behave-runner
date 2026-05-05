@@ -6,6 +6,30 @@ export function liveFormatterBundlePath(extensionPath: string): string {
   return path.join(extensionPath, "media", "python");
 }
 
+/** Quote one argv token for `cmd.exe` (spawn `{ shell: true }` on Windows). */
+function cmdQuoteArg(arg: string): string {
+  if (!/[ \t"&|<>^]/.test(arg)) {
+    return arg;
+  }
+  return `"${arg.replace(/"/g, '""')}"`;
+}
+
+/** Quote one argv token for POSIX `sh -c` style strings. */
+function shQuoteArg(arg: string): string {
+  if (/^[\w@%+=:,./-]+$/i.test(arg)) {
+    return arg;
+  }
+  return `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+function quoteShellArg(arg: string): string {
+  return process.platform === "win32" ? cmdQuoteArg(arg) : shQuoteArg(arg);
+}
+
+/**
+ * Run Behave via shell with `2>&1` so stderr is byte-interleaved with stdout
+ * (NDJSON formatter). Node otherwise reads two pipes with arbitrary ordering.
+ */
 export function spawnBehave(
   job: BehaveJob,
   cwd: string,
@@ -16,6 +40,8 @@ export function spawnBehave(
 ): cp.ChildProcessWithoutNullStreams {
   const behaveArgs: string[] = [
     "--no-capture-stdout",
+    "--no-capture-stderr",
+    "--no-logcapture",
     "--no-summary",
     "-f",
     "behave_runner_live:BehaveRunnerLiveFormatter"
@@ -26,20 +52,22 @@ export function spawnBehave(
     behaveArgs.push("-n", job.scenarioName, job.fsPath);
   }
   const env = { ...(process.env as NodeJS.ProcessEnv) };
+  env.PYTHONUNBUFFERED = "1";
   const root = opts.liveFormatterPythonRoot;
   const sep = path.delimiter;
   const prev = env.PYTHONPATH ?? "";
   env.PYTHONPATH = prev ? `${root}${sep}${prev}` : root;
-  const spawnOpts: cp.SpawnOptions = {
+
+  const quotedBehave = behaveArgs.map(quoteShellArg);
+  const command =
+    interpreterPath != null && interpreterPath.length > 0
+      ? `${quoteShellArg(interpreterPath)} -u -m behave ${quotedBehave.join(" ")} 2>&1`
+      : `behave ${quotedBehave.join(" ")} 2>&1`;
+
+  return cp.spawn(command, {
     cwd,
-    env
-  };
-  if (interpreterPath) {
-    return cp.spawn(
-      interpreterPath,
-      ["-m", "behave", ...behaveArgs],
-      spawnOpts
-    ) as cp.ChildProcessWithoutNullStreams;
-  }
-  return cp.spawn("behave", behaveArgs, spawnOpts) as cp.ChildProcessWithoutNullStreams;
+    env,
+    shell: true,
+    windowsHide: true
+  }) as cp.ChildProcessWithoutNullStreams;
 }

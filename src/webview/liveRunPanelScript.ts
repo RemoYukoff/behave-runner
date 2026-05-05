@@ -821,8 +821,8 @@ declare function acquireVsCodeApi(): {
             }
           }
           var stepErr = (m.error || "").trim();
-          stepHeadlineByKey[stepKey] = headLine || "";
           stepErrorByKey[stepKey] = stepErr;
+          stepHeadlineByKey[stepKey] = headLine || "";
           bumpFeatureStepPart(headLine, stepErr);
           bumpScenarioStepPart(sk, headLine, stepErr);
           bumpStep(stepKey, logText);
