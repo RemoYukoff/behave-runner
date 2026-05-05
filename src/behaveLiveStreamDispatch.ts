@@ -170,6 +170,34 @@ function stepGotoPayload(
 
 export type LiveStreamSink = (message: LivePanelToWebviewMessage) => void;
 
+/** Updated as scenarios start; used to attach trailing hook stdout after the last scenario. */
+export type LiveRunHookFlushState = {
+  lastScenarioKey?: string;
+};
+
+type HookFlushCtx = {
+  livePanelSink?: LiveStreamSink;
+  consumePendingStdout?: () => string;
+};
+
+/** Flush stdout captured between NDJSON events (hooks, prints) into the live panel. */
+export function flushPendingHookStdout(
+  ctx: HookFlushCtx,
+  opts?: { scenarioKey?: string }
+): void {
+  const raw = ctx.consumePendingStdout?.() ?? "";
+  if (!raw.trim()) {
+    return;
+  }
+  const t = raw.replace(/\r\n/g, "\n");
+  const chunk = t.endsWith("\n") ? t : `${t}\n`;
+  ctx.livePanelSink?.({
+    type: "hook_stdout",
+    text: normalizeToCrlfChunk(chunk),
+    scenarioKey: opts?.scenarioKey
+  });
+}
+
 export function dispatchLiveStreamEvent(
   event: LiveStreamEvent,
   ctx: {
@@ -185,6 +213,7 @@ export function dispatchLiveStreamEvent(
     livePanelSink?: LiveStreamSink;
     /** Plain stdout lines before the next NDJSON step_finished (mirrored already to the Output channel); consumed for the live panel / structured Test Results lines. */
     consumePendingStdout?: () => string;
+    hookFlushState?: LiveRunHookFlushState;
   }
 ): void {
   const uri = ctx.featureItem.uri;
@@ -198,8 +227,14 @@ export function dispatchLiveStreamEvent(
       ctx.fsPath,
       ctx.workspaceRoot
     );
+    flushPendingHookStdout(ctx, {
+      scenarioKey: scenarioItem?.id
+    });
     if (!scenarioItem) {
       return;
+    }
+    if (ctx.hookFlushState) {
+      ctx.hookFlushState.lastScenarioKey = scenarioItem.id;
     }
     const label = event.scenario ?? "(scenario)";
     ctx.appendOutput(`━━ ${label} ━━\r\n`, scenarioItem);
@@ -248,6 +283,9 @@ export function dispatchLiveStreamEvent(
   }
 
   if (event.event === "feature_finished") {
+    flushPendingHookStdout(ctx, {
+      scenarioKey: ctx.hookFlushState?.lastScenarioKey
+    });
     ctx.livePanelSink?.({
       type: "feature_finished",
       status: event.status

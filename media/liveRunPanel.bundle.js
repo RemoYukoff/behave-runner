@@ -25,6 +25,23 @@
     var selectedEl = null;
     var anonStepSeq = 0;
     var TREE_CHILD_INDENT_PX = 14;
+    var TREE_SCROLL_BOTTOM_EPS_PX = 48;
+    function isTreeScrollNearBottom(el) {
+      if (!el) {
+        return true;
+      }
+      var maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll <= 0) {
+        return true;
+      }
+      return el.scrollTop >= maxScroll - TREE_SCROLL_BOTTOM_EPS_PX;
+    }
+    function scrollTreeRootToBottomIfWasFollowing(wasFollowing) {
+      if (!treeRoot || !wasFollowing) {
+        return;
+      }
+      treeRoot.scrollTop = treeRoot.scrollHeight;
+    }
     function applyTreeRowBleed(el, ancestorTreeChildDepth, bleedReducePx) {
       var reduce = bleedReducePx || 0;
       var raw = ancestorTreeChildDepth * TREE_CHILD_INDENT_PX - reduce;
@@ -641,6 +658,15 @@
         applyRunCancelledSweep();
         return;
       }
+      if (m.type === "hook_stdout") {
+        var ht = m.text;
+        if (ht == null || ht === "") return;
+        bumpFeature(ht);
+        var hsk = m.scenarioKey;
+        if (hsk) bumpScenario(hsk, ht);
+        refreshConsoleIfLiveStepAppend();
+        return;
+      }
       if (m.type === "step_log_append") {
         var apk = m.stepKey;
         var ask = m.scenarioKey;
@@ -657,6 +683,7 @@
         var ssk = m.scenarioKey || "__orphan__";
         var startedKey = m.stepKey;
         if (!startedKey || pendingStepRowByKey[startedKey]) return;
+        var followTreeTail = isTreeScrollNearBottom(treeRoot);
         var pstarted = ensureStepListParentForScenario(ssk, m.scenario || "(scenario)");
         var sline = document.createElement("div");
         sline.className = "tree-step";
@@ -680,10 +707,11 @@
         bumpRunningStepCount(ssk, 1);
         refreshScenarioIcon(ssk);
         refreshFeatureIcon();
-        treeRoot.scrollTop = treeRoot.scrollHeight;
+        scrollTreeRootToBottomIfWasFollowing(followTreeTail);
         return;
       }
       if (m.type === "step") {
+        var followTreeTailStep = isTreeScrollNearBottom(treeRoot);
         var sk = m.scenarioKey || "__orphan__";
         var stepKey = m.stepKey || "anon-step-" + ++anonStepSeq;
         var logText = m.logText || (m.keyword || "") + " " + (m.text || "") + " \u2026 " + (m.status || "") + "\n";
@@ -750,7 +778,7 @@
         bindStepLine(line, stepKey);
         refreshScenarioIcon(sk);
         refreshFeatureIcon();
-        treeRoot.scrollTop = treeRoot.scrollHeight;
+        scrollTreeRootToBottomIfWasFollowing(followTreeTailStep);
       }
     }
     window.addEventListener("message", function(e) {

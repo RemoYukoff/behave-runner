@@ -3,7 +3,10 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { BehaveHierarchyNode } from "../behaveHierarchyModel";
 import { resolveBehaveFeatureChildrenIfNeeded } from "../behaveHierarchyModel";
-import { dispatchLiveStreamEvent } from "../behaveLiveStreamDispatch";
+import {
+  dispatchLiveStreamEvent,
+  flushPendingHookStdout
+} from "../behaveLiveStreamDispatch";
 import {
   NdjsonStdoutBuffer,
   parseLiveStreamLine
@@ -138,6 +141,7 @@ async function runBehaveJob(
 
     const ndjsonBuf = new NdjsonStdoutBuffer();
     let pendingPlainStdout = "";
+    const hookFlushState: { lastScenarioKey?: string } = {};
 
     const liveDispatchCtx = {
       featureItem,
@@ -150,7 +154,8 @@ async function runBehaveJob(
         const s = pendingPlainStdout;
         pendingPlainStdout = "";
         return s;
-      }
+      },
+      hookFlushState
     };
 
     const proc = spawnBehave(runJob, workspaceRoot, interpreter.path, {
@@ -205,6 +210,9 @@ async function runBehaveJob(
             pendingPlainStdout += tail + "\n";
           }
         }
+        flushPendingHookStdout(liveDispatchCtx, {
+          scenarioKey: hookFlushState.lastScenarioKey
+        });
         resolvePromise();
       });
     });

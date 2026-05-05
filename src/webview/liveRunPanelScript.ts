@@ -31,6 +31,26 @@ declare function acquireVsCodeApi(): {
       var anonStepSeq = 0;
       /** Must match .tree-children: padding-left 14px. */
       var TREE_CHILD_INDENT_PX = 14;
+      /** If the user has scrolled up, do not yank the tree back to the bottom on each live update. */
+      var TREE_SCROLL_BOTTOM_EPS_PX = 48;
+
+      function isTreeScrollNearBottom(el: HTMLElement | null): boolean {
+        if (!el) {
+          return true;
+        }
+        var maxScroll = el.scrollHeight - el.clientHeight;
+        if (maxScroll <= 0) {
+          return true;
+        }
+        return el.scrollTop >= maxScroll - TREE_SCROLL_BOTTOM_EPS_PX;
+      }
+
+      function scrollTreeRootToBottomIfWasFollowing(wasFollowing: boolean): void {
+        if (!treeRoot || !wasFollowing) {
+          return;
+        }
+        treeRoot.scrollTop = treeRoot.scrollHeight;
+      }
 
       function applyTreeRowBleed(
         el: HTMLElement,
@@ -734,6 +754,15 @@ declare function acquireVsCodeApi(): {
           applyRunCancelledSweep();
           return;
         }
+        if (m.type === "hook_stdout") {
+          var ht = m.text;
+          if (ht == null || ht === "") return;
+          bumpFeature(ht);
+          var hsk = m.scenarioKey;
+          if (hsk) bumpScenario(hsk, ht);
+          refreshConsoleIfLiveStepAppend();
+          return;
+        }
         if (m.type === "step_log_append") {
           var apk = m.stepKey;
           var ask = m.scenarioKey;
@@ -750,6 +779,7 @@ declare function acquireVsCodeApi(): {
           var ssk = m.scenarioKey || "__orphan__";
           var startedKey = m.stepKey;
           if (!startedKey || pendingStepRowByKey[startedKey]) return;
+          var followTreeTail = isTreeScrollNearBottom(treeRoot);
           var pstarted = ensureStepListParentForScenario(ssk, m.scenario || "(scenario)");
           var sline = document.createElement("div");
           sline.className = "tree-step";
@@ -773,10 +803,11 @@ declare function acquireVsCodeApi(): {
           bumpRunningStepCount(ssk, 1);
           refreshScenarioIcon(ssk);
           refreshFeatureIcon();
-          treeRoot.scrollTop = treeRoot.scrollHeight;
+          scrollTreeRootToBottomIfWasFollowing(followTreeTail);
           return;
         }
         if (m.type === "step") {
+          var followTreeTailStep = isTreeScrollNearBottom(treeRoot);
           var sk = m.scenarioKey || "__orphan__";
           var stepKey = m.stepKey || ("anon-step-" + (++anonStepSeq));
           var logText = m.logText || ((m.keyword || "") + " " + (m.text || "") + " … " + (m.status || "") + "\n");
@@ -854,7 +885,7 @@ declare function acquireVsCodeApi(): {
 
           refreshScenarioIcon(sk);
           refreshFeatureIcon();
-          treeRoot.scrollTop = treeRoot.scrollHeight;
+          scrollTreeRootToBottomIfWasFollowing(followTreeTailStep);
         }
       }
 

@@ -29,6 +29,8 @@ export type LivePanelToWebviewMessage =
     }
   | { type: "scenario_finished"; key: string; status?: string }
   | { type: "feature_finished"; status?: string }
+  /** Stdout from hooks / env (between NDJSON events); mirrored into feature + optional scenario logs. */
+  | { type: "hook_stdout"; text: string; scenarioKey?: string }
   | {
       type: "step";
       scenarioKey: string;
@@ -74,6 +76,7 @@ const HOST_TO_WEBVIEW_TYPES = new Set([
   "step_started",
   "scenario_finished",
   "feature_finished",
+  "hook_stdout",
   "step",
   "step_log_append",
   "runCancelled"
