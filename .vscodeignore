@@ -1,9 +1,9 @@
 example-project/**
-node_modules/**
-!node_modules/@behave-runner/core/out/**
-!node_modules/@behave-runner/core/package.json
-!node_modules/@behave-runner/lsp/out/**
-!node_modules/@behave-runner/lsp/package.json
+node_modules/@types/**
+node_modules/typescript/**
+node_modules/esbuild/**
+node_modules/@esbuild/**
+node_modules/.bin/**
 out/**/*.map
 src/**
 packages/**

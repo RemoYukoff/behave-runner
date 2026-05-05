@@ -34,8 +34,10 @@ jobs:
             echo "publish=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish
+      - name: Package and publish
         if: steps.version_check.outputs.publish == 'true'
         env:
           OVSX_TOKEN: ${{ secrets.OVSX_TOKEN }}
-        run: npx ovsx publish -p "$OVSX_TOKEN"
+        run: |
+          npx --yes @vscode/vsce package --follow-symlinks -o behave-runner.vsix
+          npx --yes ovsx publish -p "$OVSX_TOKEN" --packagePath behave-runner.vsix
