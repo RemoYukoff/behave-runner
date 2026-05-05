@@ -5,6 +5,12 @@
   "description": "Behave-aligned parsing and step matching (extension + future LSP)",
   "main": "out/index.js",
   "types": "out/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./out/index.d.ts",
+      "default": "./out/index.js"
+    }
+  },
   "files": [
     "out",
     "README.md"

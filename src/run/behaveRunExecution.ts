@@ -1,102 +1,42 @@
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import {
-  applyBehaveJsonReport,
-  type BehaveJsonApplyResult,
-  type BehaveTreeStepOutcome
-} from "../behaveJsonReport";
 import type { BehaveHierarchyNode } from "../behaveHierarchyModel";
+import { resolveBehaveFeatureChildrenIfNeeded } from "../behaveHierarchyModel";
+import { dispatchLiveStreamEvent } from "../behaveLiveStreamDispatch";
 import {
-  resolveBehaveFeatureChildrenIfNeeded,
-  SCEN_PREFIX
-} from "../behaveHierarchyModel";
-import {
-  dispatchLiveStreamEvent,
-  liveStreamStatusToTreeStatus,
   NdjsonStdoutBuffer,
-  parseLiveStreamLine,
-  type LiveStreamJob
-} from "../behaveLiveStream";
-import { clearBehaveRunState, setBehaveTreeStatus } from "../behaveRunState";
-import {
-  clearLiveRunPanel,
-  persistLivePanelCaptureNow,
-  postLiveRunMessage
-} from "../behaveRunnerServices";
+  parseLiveStreamLine
+} from "../behaveLiveStreamParse";
+import type { LiveStreamJob } from "../behaveLiveStreamTypes";
+import { getBehaveRunnerContext } from "../behaveRunnerContext";
 import { revealLiveRunPanel } from "../liveRunWebview";
 import type { LivePanelToWebviewMessage } from "../ui/livePanelProtocol";
 import { getPythonInterpreterPath } from "../pythonInterpreter";
 import type { BehaveJob } from "./behaveJobTypes";
-import {
-  directFeatureChildren,
-  getWorkspaceRootForFile,
-  planJobs
-} from "./behaveJobTypes";
+import { getWorkspaceRootForFile, planJobs } from "./behaveJobTypes";
 import {
   releaseActiveRunCancellation,
   takeOverActiveRunCancellation
 } from "./behaveRunCancellation";
-import { getBehaveRunnerExtensionPath } from "../behaveRunnerServices";
+import type { BehaveRunSinks } from "./behaveRunPorts";
 import { runBehaveDebugJobs } from "./behaveRunDebug";
 import { rememberBehaveRun } from "./behaveRunLastRun";
-import { appendRunOutput } from "./behaveRunOutput";
 import { liveFormatterBundlePath, spawnBehave } from "./behaveRunSpawn";
 
 function appendOutputForNode(
+  sinks: BehaveRunSinks,
   text: string,
   _test?: BehaveHierarchyNode,
   _location?: vscode.Location
 ): void {
-  appendRunOutput(text);
-}
-
-function enqueueAndStartScenarioItems(
-  job: BehaveJob,
-  featureItem: BehaveHierarchyNode
-): void {
-  const roots = directFeatureChildren(featureItem);
-  const touchScenario = (scenario: BehaveHierarchyNode): void => {
-    setBehaveTreeStatus(scenario.id, "running");
-  };
-  if (job.kind === "feature") {
-    for (const child of roots) {
-      if (child.id.startsWith(SCEN_PREFIX)) {
-        touchScenario(child);
-      }
-    }
-    return;
-  }
-  if (job.scenarioItem.parent === featureItem) {
-    touchScenario(job.scenarioItem);
-  }
-}
-
-function failScenarioItemsWithoutJson(
-  job: BehaveJob,
-  featureItem: BehaveHierarchyNode,
-  message: string
-): void {
-  const roots = directFeatureChildren(featureItem);
-  if (job.kind === "feature") {
-    for (const child of roots) {
-      if (child.id.startsWith(SCEN_PREFIX)) {
-        setBehaveTreeStatus(child.id, "failed");
-      }
-    }
-    appendRunOutput(`${message}\r\n`);
-    return;
-  }
-  if (job.scenarioItem.parent === featureItem) {
-    setBehaveTreeStatus(job.scenarioItem.id, "failed");
-    appendRunOutput(`${message}\r\n`);
-  }
+  sinks.output.append(text);
 }
 
 async function runBehaveJob(
   job: BehaveJob,
   token: vscode.CancellationToken,
+  sinks: BehaveRunSinks,
   extensionPath: string,
   liveOpts?: { skipLivePanelReset?: boolean }
 ): Promise<void> {
@@ -104,11 +44,17 @@ async function runBehaveJob(
   const fsPath = job.fsPath;
   await resolveBehaveFeatureChildrenIfNeeded(featureItem);
 
+  const appendOut = (
+    text: string,
+    test?: BehaveHierarchyNode,
+    loc?: vscode.Location
+  ): void => appendOutputForNode(sinks, text, test, loc);
+
   let runJob: BehaveJob = job;
   if (job.kind === "scenario") {
     const freshScenario = featureItem.children.get(job.scenarioItem.id);
     if (!freshScenario) {
-      appendRunOutput(
+      sinks.output.append(
         `[Behave Runner] Scenario "${job.scenarioName}" not found under ${path.basename(fsPath)} after refresh.\r\n`
       );
       return;
@@ -129,21 +75,16 @@ async function runBehaveJob(
   const liveBundlePresent = fs.existsSync(
     path.join(liveFormatterRoot, "behave_runner_live", "__init__.py")
   );
-  const useLiveStream = liveBundlePresent && extensionPath.length > 0;
 
-  if (!liveBundlePresent && extensionPath.length > 0) {
-    appendRunOutput(
-      "[Behave Runner] Live stream formatter bundle missing; install/rebuild the extension.\r\n"
-    );
+  if (!liveBundlePresent || extensionPath.length === 0) {
+    const msg =
+      "Behave Runner needs the bundled live stream formatter under media/python/behave_runner_live (reinstall or rebuild the extension).";
+    sinks.output.append(`[Behave Runner] ${msg}\r\n`);
+    void vscode.window.showErrorMessage(msg);
+    return;
   }
 
-  const tmpDir = await fs.promises.mkdtemp(
-    path.join(os.tmpdir(), "behave-runner-")
-  );
-  const tmpJson = path.join(tmpDir, "report.json");
-
   let exitCode = 0;
-  let jobItemsPrimed = false;
 
   let pendingLiveStderr = "";
   let attachLiveStderrToStepKey: string | undefined;
@@ -174,21 +115,16 @@ async function runBehaveJob(
         pendingLiveStderr = "";
       }
     }
-    postLiveRunMessage(message);
+    sinks.livePanel.post(message);
   }
 
   try {
-    enqueueAndStartScenarioItems(runJob, featureItem);
-    jobItemsPrimed = true;
-
     if (!liveOpts?.skipLivePanelReset) {
-      clearLiveRunPanel();
-      if (useLiveStream) {
-        postLiveRunMessage({
-          type: "feature",
-          label: featureItem.label
-        });
-      }
+      sinks.livePanel.clear();
+      sinks.livePanel.post({
+        type: "feature",
+        label: featureItem.label
+      });
     }
 
     const liveJob: LiveStreamJob =
@@ -208,21 +144,8 @@ async function runBehaveJob(
       job: liveJob,
       fsPath,
       workspaceRoot,
-      appendOutput: appendOutputForNode,
+      appendOutput: appendOut,
       livePanelSink: livePanelSinkWrap,
-      onStepTreeStatus: (
-        stepItem: BehaveHierarchyNode | undefined,
-        raw: string
-      ): void => {
-        if (!stepItem) {
-          return;
-        }
-        if (raw === "running") {
-          setBehaveTreeStatus(stepItem.id, "running");
-          return;
-        }
-        setBehaveTreeStatus(stepItem.id, liveStreamStatusToTreeStatus(raw));
-      },
       consumePendingStdout: (): string => {
         const s = pendingPlainStdout;
         pendingPlainStdout = "";
@@ -230,9 +153,8 @@ async function runBehaveJob(
       }
     };
 
-    const proc = spawnBehave(runJob, workspaceRoot, interpreter.path, tmpJson, {
-      liveStream: useLiveStream,
-      liveFormatterPythonRoot: useLiveStream ? liveFormatterRoot : undefined
+    const proc = spawnBehave(runJob, workspaceRoot, interpreter.path, {
+      liveFormatterPythonRoot: liveFormatterRoot
     });
 
     await new Promise<void>((resolvePromise, rejectPromise) => {
@@ -242,36 +164,30 @@ async function runBehaveJob(
 
       const onStdoutChunk = (chunk: Buffer): void => {
         const text = chunk.toString();
-        if (useLiveStream) {
-          for (const line of ndjsonBuf.consumeChunk(text)) {
-            appendRunOutput(line);
-            const ev = parseLiveStreamLine(line);
-            if (ev) {
-              dispatchLiveStreamEvent(ev, liveDispatchCtx);
-            } else {
-              pendingPlainStdout += line + "\n";
-            }
+        for (const line of ndjsonBuf.consumeChunk(text)) {
+          sinks.output.append(line);
+          const ev = parseLiveStreamLine(line);
+          if (ev) {
+            dispatchLiveStreamEvent(ev, liveDispatchCtx);
+          } else {
+            pendingPlainStdout += line + "\n";
           }
-        } else {
-          appendRunOutput(text);
         }
       };
 
       proc.stdout.on("data", onStdoutChunk);
       proc.stderr.on("data", (chunk: Buffer) => {
         const t = chunk.toString();
-        appendRunOutput(t);
-        if (useLiveStream) {
-          if (attachLiveStderrToStepKey) {
-            postLiveRunMessage({
-              type: "step_log_append",
-              stepKey: attachLiveStderrToStepKey,
-              scenarioKey: lastLiveStepScenarioKey,
-              text: t
-            });
-          } else {
-            pendingLiveStderr += t;
-          }
+        sinks.output.append(t);
+        if (attachLiveStderrToStepKey) {
+          sinks.livePanel.post({
+            type: "step_log_append",
+            stepKey: attachLiveStderrToStepKey,
+            scenarioKey: lastLiveStepScenarioKey,
+            text: t
+          });
+        } else {
+          pendingLiveStderr += t;
         }
       });
       proc.on("error", (err) => {
@@ -279,109 +195,52 @@ async function runBehaveJob(
       });
       proc.on("close", (code) => {
         exitCode = code ?? 0;
-        if (useLiveStream) {
-          const tail = ndjsonBuf.flushLine();
-          if (tail) {
-            appendRunOutput(tail);
-            const ev = parseLiveStreamLine(tail);
-            if (ev) {
-              dispatchLiveStreamEvent(ev, liveDispatchCtx);
-            } else {
-              pendingPlainStdout += tail + "\n";
-            }
+        const tail = ndjsonBuf.flushLine();
+        if (tail) {
+          sinks.output.append(tail);
+          const ev = parseLiveStreamLine(tail);
+          if (ev) {
+            dispatchLiveStreamEvent(ev, liveDispatchCtx);
+          } else {
+            pendingPlainStdout += tail + "\n";
           }
         }
         resolvePromise();
       });
     });
 
-    let jsonText = "";
-    try {
-      jsonText = await fs.promises.readFile(tmpJson, "utf-8");
-    } catch {
-      appendRunOutput(
-        "[Behave Runner] Behave did not write a JSON report (process may have crashed).\r\n"
-      );
-    }
-
-    const applyJob =
-      runJob.kind === "feature"
-        ? { kind: "feature" as const, fsPath, workspaceRoot }
-        : {
-            kind: "scenario" as const,
-            fsPath,
-            scenarioName: runJob.scenarioName,
-            scenarioItemId: runJob.scenarioItem.id,
-            workspaceRoot
-          };
-
-    let jsonResult: BehaveJsonApplyResult | undefined;
-    if (jsonText.length > 0) {
-      jsonResult = applyBehaveJsonReport(
-        featureItem,
-        applyJob,
-        jsonText,
-        appendOutputForNode,
-        {
-          omitPrintedOutput: useLiveStream,
-          onStepOutcome: (
-            stepItem: BehaveHierarchyNode,
-            outcome: BehaveTreeStepOutcome
-          ) => {
-            setBehaveTreeStatus(stepItem.id, outcome);
-          },
-          onScenarioOutcome: (
-            scenarioItem: BehaveHierarchyNode,
-            outcome: "passed" | "failed"
-          ) => {
-            setBehaveTreeStatus(scenarioItem.id, outcome);
-          }
-        }
-      );
-    }
-
-    if (!jsonResult?.applied) {
-      failScenarioItemsWithoutJson(
-        runJob,
-        featureItem,
-        jsonText.length === 0
-          ? "Behave finished without a usable JSON report; step results are unavailable."
-          : "Behave JSON report did not include this feature or could not be read."
-      );
-    }
-
     if (exitCode !== 0) {
-      appendRunOutput(
+      sinks.output.append(
         `[Behave Runner] Behave exited with code ${exitCode}.\r\n`
       );
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    appendRunOutput(`Behave Runner error: ${msg}\r\n`);
-    if (jobItemsPrimed) {
-      failScenarioItemsWithoutJson(
-        runJob,
-        featureItem,
-        `Behave Runner error: ${msg}`
-      );
-    }
+    sinks.output.append(`Behave Runner error: ${msg}\r\n`);
+    void vscode.window.showErrorMessage(`Behave Runner: ${msg}`);
   } finally {
     if (token.isCancellationRequested) {
-      postLiveRunMessage({ type: "runCancelled" });
+      sinks.livePanel.post({ type: "runCancelled" });
     }
-    await fs.promises.rm(tmpDir, { recursive: true }).catch(() => {});
   }
 }
 
 export async function runBehaveJobs(
   jobs: BehaveJob[],
-  token: vscode.CancellationToken,
-  extensionPath: string
+  token: vscode.CancellationToken
 ): Promise<void> {
+  const ctx = getBehaveRunnerContext();
+  if (!ctx) {
+    void vscode.window.showErrorMessage(
+      "Behave Runner: extension context is not ready."
+    );
+    return;
+  }
+  const { runSinks: sinks, extensionPath } = ctx;
+
   rememberBehaveRun("run", jobs);
   const runCts = takeOverActiveRunCancellation();
   const parentReg = token.onCancellationRequested(() => runCts.cancel());
-  clearBehaveRunState();
   try {
     const batchSameFeatureScenarios =
       jobs.length > 1 &&
@@ -392,18 +251,18 @@ export async function runBehaveJobs(
       if (runCts.token.isCancellationRequested) {
         break;
       }
-      await runBehaveJob(jobs[i], runCts.token, extensionPath, {
+      await runBehaveJob(jobs[i], runCts.token, sinks, extensionPath, {
         skipLivePanelReset: batchSameFeatureScenarios && i > 0
       });
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    appendRunOutput(`Behave Runner error: ${msg}\r\n`);
+    sinks.output.append(`Behave Runner error: ${msg}\r\n`);
     void vscode.window.showErrorMessage(`Behave Runner: ${msg}`);
   } finally {
     parentReg.dispose();
     releaseActiveRunCancellation(runCts);
-    persistLivePanelCaptureNow();
+    sinks.livePanel.persistCapture();
   }
 }
 
@@ -412,7 +271,7 @@ export async function runBehaveHierarchySelection(
   token: vscode.CancellationToken
 ): Promise<void> {
   await revealLiveRunPanel();
-  await runBehaveJobs(planJobs(items), token, getBehaveRunnerExtensionPath());
+  await runBehaveJobs(planJobs(items), token);
 }
 
 export async function runBehaveHierarchyDebugSelection(
@@ -422,5 +281,3 @@ export async function runBehaveHierarchyDebugSelection(
   await revealLiveRunPanel();
   await runBehaveDebugJobs(planJobs(items), token);
 }
-
-export { planJobs, type BehaveJob } from "./behaveJobTypes";

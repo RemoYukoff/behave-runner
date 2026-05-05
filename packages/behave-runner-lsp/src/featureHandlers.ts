@@ -1,6 +1,7 @@
 import {
   findMatchingDefinitions,
   parseStepLine,
+  parseStepLinePrefixForCompletion,
   resolveEffectiveKeyword,
   type StepDefinition,
   type StepKeyword,
@@ -27,20 +28,6 @@ function behavePatternToSnippet(pattern: string): string {
   return pattern.replace(/\{(\w+)(?::\w)?\}/g, (_, name: string) => {
     return `\${${snippetIndex++}:${name}}`;
   });
-}
-
-function parseCurrentLine(
-  line: string
-): { keyword: string; partialText: string; keywordEnd: number } | null {
-  const match = line.match(/^\s*(Given|When|Then|And|But|\*)\s*(.*)/i);
-  if (!match) {
-    return null;
-  }
-  const fullMatch = match[0];
-  const keyword = match[1];
-  const partialText = match[2] || "";
-  const keywordEnd = fullMatch.length - partialText.length;
-  return { keyword, partialText, keywordEnd };
 }
 
 function filterDefinitionsByKeyword(
@@ -137,29 +124,17 @@ export function computeCompletions(
       RangeConstructor.create(position.line, 0, position.line + 1, 0)
     )
     .replace(/\r?\n$/, "");
-  const parsed = parseCurrentLine(line);
+  const docLines = document.getText().split("\n");
+  const parsed = parseStepLinePrefixForCompletion(
+    line,
+    docLines,
+    position.line
+  );
   if (!parsed) {
     return [];
   }
 
-  const { keyword, partialText, keywordEnd } = parsed;
-  let effectiveKeyword: StepKeyword | null = null;
-  const lowerKeyword = keyword.toLowerCase();
-
-  if (
-    lowerKeyword === "given" ||
-    lowerKeyword === "when" ||
-    lowerKeyword === "then"
-  ) {
-    effectiveKeyword = lowerKeyword as StepKeyword;
-  } else if (
-    lowerKeyword === "and" ||
-    lowerKeyword === "but" ||
-    lowerKeyword === "*"
-  ) {
-    const docLines = document.getText().split("\n");
-    effectiveKeyword = resolveEffectiveKeyword(docLines, position.line);
-  }
+  const { partialText, keywordEnd, effectiveKeyword } = parsed;
 
   const filtered = filterDefinitionsByKeyword(
     allDefinitions,

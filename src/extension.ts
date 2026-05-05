@@ -1,19 +1,34 @@
 import * as vscode from "vscode";
 import {
+  createBehaveRunSinks,
+  setBehaveRunnerContext
+} from "./behaveRunnerContext";
+import {
   buildPythonBehaveDebugLaunchFromCliArgs,
-  cancelActiveBehaveRun,
-  getJustMyCodeForResource,
-  registerBehaveOutputChannel,
-  registerBehaveRunWorkspacePersistence,
-  rerunLastBehaveRun,
-  setBehaveRunnerServices
-} from "./behaveRun";
+  getJustMyCodeForResource
+} from "./run/behavePythonDebug";
+import { cancelActiveBehaveRun } from "./run/behaveRunCancellation";
+import { registerBehaveOutputChannel } from "./run/behaveRunOutput";
+import { registerBehaveRunWorkspacePersistence } from "./run/behaveRunLastRun";
+import { rerunLastBehaveRun } from "./run/behaveRunRerun";
 import { registerBehaveCodeLens } from "./behaveCodeLens";
 import { registerBehaveHierarchyStore } from "./behaveHierarchyModel";
-import { createBehaveLanguageClient } from "./language/behaveLanguageClient";
+import {
+  createBehaveLanguageClient,
+  reportBehaveLanguageServerStartInitiated,
+  reportBehaveLanguageServerStartResult,
+  reportBehaveLanguageServerStopped
+} from "./language/behaveLanguageClient";
 import { registerBehaveLanguageFeatures } from "./language/registerBehaveLanguageFeatures";
 import { registerLiveRunWebview, revealLiveRunPanel } from "./liveRunWebview";
-import type { RunScenarioArgs } from "./types";
+
+/** Arguments for `behaveRunner.debugScenario` (e.g. keybindings). */
+type RunScenarioArgs = {
+  filePath: string;
+  scenarioName?: string;
+  runAll: boolean;
+  workspaceRoot: string;
+};
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   try {
@@ -33,24 +48,39 @@ async function activateBehaveRunner(
   const behaveLanguageClient = createBehaveLanguageClient(context);
   context.subscriptions.push(
     new vscode.Disposable(() => {
+      reportBehaveLanguageServerStopped();
       void behaveLanguageClient.dispose();
     })
   );
-  void behaveLanguageClient.start().catch((err) => {
-    console.error("Behave Runner: language server failed to start:", err);
-  });
+  reportBehaveLanguageServerStartInitiated();
+  void behaveLanguageClient
+    .start()
+    .then(
+      () => {
+        reportBehaveLanguageServerStartResult(true);
+      },
+      (err: unknown) => {
+        reportBehaveLanguageServerStartResult(false);
+        console.error("Behave Runner: language server failed to start:", err);
+        void vscode.window.showErrorMessage(
+          `Behave Runner: language server failed to start. Step navigation and diagnostics may be unavailable. (${err instanceof Error ? err.message : String(err)})`
+        );
+      }
+    );
 
   registerLiveRunWebview(context);
 
   const behaveStore = registerBehaveHierarchyStore(context);
 
-  setBehaveRunnerServices({
+  const runSinks = createBehaveRunSinks();
+  setBehaveRunnerContext({
     extensionUri: context.extensionUri,
     extensionPath: context.extensionPath ?? "",
-    hierarchyStore: behaveStore
+    hierarchyStore: behaveStore,
+    runSinks
   });
   context.subscriptions.push({
-    dispose: () => setBehaveRunnerServices(undefined)
+    dispose: () => setBehaveRunnerContext(undefined)
   });
 
   registerBehaveRunWorkspacePersistence(context);
@@ -116,5 +146,5 @@ async function activateBehaveRunner(
 }
 
 export function deactivate(): void {
-  setBehaveRunnerServices(undefined);
+  setBehaveRunnerContext(undefined);
 }

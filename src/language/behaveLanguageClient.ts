@@ -7,6 +7,30 @@ import {
   TransportKind,
 } from "vscode-languageclient/node";
 
+export type BehaveLanguageServerHealth =
+  | "stopped"
+  | "starting"
+  | "ready"
+  | "failed";
+
+let languageServerHealth: BehaveLanguageServerHealth = "stopped";
+
+export function getBehaveLanguageServerHealth(): BehaveLanguageServerHealth {
+  return languageServerHealth;
+}
+
+export function reportBehaveLanguageServerStartInitiated(): void {
+  languageServerHealth = "starting";
+}
+
+export function reportBehaveLanguageServerStartResult(ok: boolean): void {
+  languageServerHealth = ok ? "ready" : "failed";
+}
+
+export function reportBehaveLanguageServerStopped(): void {
+  languageServerHealth = "stopped";
+}
+
 export function createBehaveLanguageClient(
   context: vscode.ExtensionContext
 ): LanguageClient {

@@ -118,6 +118,39 @@ export function findMatchingDefinitions(
  * @param previousKeyword The keyword from the previous step (for And/But resolution)
  * @returns StepInfo if the line is a step, null otherwise
  */
+/**
+ * Parse a feature line as an in-progress step (e.g. for LSP completion).
+ * Allows empty step text after the keyword; uses the same keyword list as {@link parseStepLine}.
+ */
+export function parseStepLinePrefixForCompletion(
+  line: string,
+  lines: string[],
+  cursorLine: number
+): {
+  keyword: string;
+  partialText: string;
+  /** 0-based column in `line` where step text (completion prefix) begins. */
+  keywordEnd: number;
+  effectiveKeyword: StepKeyword | null;
+} | null {
+  const match = line.match(/^\s*(Given|When|Then|And|But|\*)\s*(.*)$/i);
+  if (!match) {
+    return null;
+  }
+  const fullMatch = match[0];
+  const keyword = match[1];
+  const partialText = match[2] ?? "";
+  const keywordEnd = fullMatch.length - partialText.length;
+  const lower = keyword.toLowerCase();
+  let effectiveKeyword: StepKeyword | null = null;
+  if (lower === "given" || lower === "when" || lower === "then") {
+    effectiveKeyword = lower as StepKeyword;
+  } else if (lower === "and" || lower === "but" || lower === "*") {
+    effectiveKeyword = resolveEffectiveKeyword(lines, cursorLine);
+  }
+  return { keyword, partialText, keywordEnd, effectiveKeyword };
+}
+
 export function parseStepLine(
   line: string,
   previousKeyword: StepKeyword | null

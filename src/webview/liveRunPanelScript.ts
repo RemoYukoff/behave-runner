@@ -55,6 +55,9 @@ declare function acquireVsCodeApi(): {
       }
 
       var TREE_W_KEY = "behaveRunner.liveRun.treeWidthPx";
+      /** Must match LIVE_PANEL_PROTOCOL_VERSION in src/ui/livePanelProtocol.ts */
+      var LIVE_PANEL_PROTOCOL_EXPECTED = 1;
+      var livePanelProtocolOk = false;
 
       var featureIconEl = null;
       var scenarioIcons = Object.create(null);
@@ -620,6 +623,29 @@ declare function acquireVsCodeApi(): {
 
       function handleLivePanelPayload(m) {
         if (!m || typeof m !== "object") return;
+        if (m.type === "protocol") {
+          livePanelProtocolOk =
+            typeof m.version === "number" &&
+            m.version === LIVE_PANEL_PROTOCOL_EXPECTED;
+          if (!livePanelProtocolOk && emptyPlaceholder) {
+            emptyPlaceholder.textContent =
+              "Behave Runner: Live panel protocol mismatch. Reinstall or rebuild the extension.";
+            emptyPlaceholder.classList.remove("hidden");
+            if (shell) shell.classList.add("hidden");
+          }
+          return;
+        }
+        if (!livePanelProtocolOk) {
+          if (
+            m.type === "replayCapture" ||
+            m.type === "clear" ||
+            m.type === "feature"
+          ) {
+            livePanelProtocolOk = true;
+          } else {
+            return;
+          }
+        }
         if (m.type === "replayCapture" && Array.isArray(m.messages)) {
           for (var ri = 0; ri < m.messages.length; ri++) {
             handleLivePanelPayload(m.messages[ri]);

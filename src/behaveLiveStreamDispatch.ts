@@ -1,131 +1,18 @@
 import * as vscode from "vscode";
 import type { BehaveHierarchyNode } from "./behaveHierarchyModel";
-import type { BehaveTreeStatus } from "./behaveRunState";
-import { normalizeToCrlfChunk } from "./text/normalizeCrlf";
-import type { LivePanelToWebviewMessage } from "./ui/livePanelProtocol";
 import {
   findBgItem,
   findScenarioItem,
-  findStepUnderParent,
+  findStepUnderParent
+} from "./behaveLiveStreamLookup";
+import {
   normalizeScenarioName,
   parseBehaveLocation,
   pathsEqualFs
-} from "./behaveJsonReport";
-
-export type LiveStreamJob =
-  | { kind: "feature" }
-  | {
-      kind: "scenario";
-      scenarioName: string;
-      scenarioItem: BehaveHierarchyNode;
-    };
-
-export type LiveStreamEvent =
-  | {
-      event: "scenario_started";
-      feature?: string;
-      scenario?: string;
-      location?: string;
-    }
-  | {
-      event: "scenario_finished";
-      feature?: string;
-      scenario?: string;
-      location?: string;
-      status?: string;
-    }
-  | {
-      event: "feature_finished";
-      feature?: string;
-      status?: string;
-    }
-  | {
-      event: "step_started";
-      feature?: string;
-      scenario?: string;
-      location?: string;
-      keyword?: string;
-      step?: string;
-    }
-  | {
-      event: "step_finished";
-      feature?: string;
-      scenario?: string;
-      location?: string;
-      keyword?: string;
-      step?: string;
-      status?: string;
-      error?: string | null;
-    };
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-export function parseLiveStreamLine(jsonLine: string): LiveStreamEvent | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonLine) as unknown;
-  } catch {
-    return undefined;
-  }
-  if (!isRecord(parsed)) {
-    return undefined;
-  }
-  const ev = parsed.event;
-  if (ev === "scenario_started") {
-    return {
-      event: "scenario_started",
-      feature: typeof parsed.feature === "string" ? parsed.feature : undefined,
-      scenario: typeof parsed.scenario === "string" ? parsed.scenario : undefined,
-      location: typeof parsed.location === "string" ? parsed.location : undefined
-    };
-  }
-  if (ev === "scenario_finished") {
-    return {
-      event: "scenario_finished",
-      feature: typeof parsed.feature === "string" ? parsed.feature : undefined,
-      scenario: typeof parsed.scenario === "string" ? parsed.scenario : undefined,
-      location: typeof parsed.location === "string" ? parsed.location : undefined,
-      status: typeof parsed.status === "string" ? parsed.status : undefined
-    };
-  }
-  if (ev === "feature_finished") {
-    return {
-      event: "feature_finished",
-      feature: typeof parsed.feature === "string" ? parsed.feature : undefined,
-      status: typeof parsed.status === "string" ? parsed.status : undefined
-    };
-  }
-  if (ev === "step_started") {
-    return {
-      event: "step_started",
-      feature: typeof parsed.feature === "string" ? parsed.feature : undefined,
-      scenario: typeof parsed.scenario === "string" ? parsed.scenario : undefined,
-      location: typeof parsed.location === "string" ? parsed.location : undefined,
-      keyword: typeof parsed.keyword === "string" ? parsed.keyword : undefined,
-      step: typeof parsed.step === "string" ? parsed.step : undefined
-    };
-  }
-  if (ev === "step_finished") {
-    return {
-      event: "step_finished",
-      feature: typeof parsed.feature === "string" ? parsed.feature : undefined,
-      scenario: typeof parsed.scenario === "string" ? parsed.scenario : undefined,
-      location: typeof parsed.location === "string" ? parsed.location : undefined,
-      keyword: typeof parsed.keyword === "string" ? parsed.keyword : undefined,
-      step: typeof parsed.step === "string" ? parsed.step : undefined,
-      status: typeof parsed.status === "string" ? parsed.status : undefined,
-      error:
-        parsed.error == null
-          ? undefined
-          : typeof parsed.error === "string"
-            ? parsed.error
-            : String(parsed.error)
-    };
-  }
-  return undefined;
-}
+} from "./behaveLiveStreamPaths";
+import { normalizeToCrlfChunk } from "./text/normalizeCrlf";
+import type { LivePanelToWebviewMessage } from "./ui/livePanelProtocol";
+import type { LiveStreamEvent, LiveStreamJob } from "./behaveLiveStreamTypes";
 
 /** Behave step status name when no Python step matches (not JavaScript `undefined`). */
 function statusLabelForLog(rawLower: string): string {
@@ -133,24 +20,6 @@ function statusLabelForLog(rawLower: string): string {
     return "no step definition";
   }
   return rawLower;
-}
-
-export class NdjsonStdoutBuffer {
-  private remainder = "";
-
-  /** Returns complete lines (without trailing \\n). */
-  consumeChunk(chunk: string): string[] {
-    this.remainder += chunk;
-    const parts = this.remainder.split(/\r?\n/);
-    this.remainder = parts.pop() ?? "";
-    return parts.filter((p) => p.length > 0);
-  }
-
-  flushLine(): string | undefined {
-    const t = this.remainder.trim();
-    this.remainder = "";
-    return t.length > 0 ? t : undefined;
-  }
 }
 
 function locationForBehaveStep(
@@ -301,24 +170,6 @@ function stepGotoPayload(
 
 export type LiveStreamSink = (message: LivePanelToWebviewMessage) => void;
 
-export function liveStreamStatusToTreeStatus(status: string): BehaveTreeStatus {
-  const s = status.toLowerCase();
-  if (s === "failed" || s === "error") {
-    return "failed";
-  }
-  // Behave names this status "undefined" when no matching step definition exists (run stops with error).
-  if (s === "undefined") {
-    return "failed";
-  }
-  if (s === "skipped") {
-    return "skipped";
-  }
-  if (s === "passed" || s === "pending") {
-    return "passed";
-  }
-  return "skipped";
-}
-
 export function dispatchLiveStreamEvent(
   event: LiveStreamEvent,
   ctx: {
@@ -332,10 +183,6 @@ export function dispatchLiveStreamEvent(
       location?: vscode.Location
     ) => void;
     livePanelSink?: LiveStreamSink;
-    onStepTreeStatus?: (
-      stepItem: BehaveHierarchyNode | undefined,
-      rawStatus: string
-    ) => void;
     /** Plain stdout lines before the next NDJSON step_finished (mirrored already to the Output channel); consumed for the live panel / structured Test Results lines. */
     consumePendingStdout?: () => string;
   }
@@ -363,13 +210,11 @@ export function dispatchLiveStreamEvent(
       key: scenarioItem.id,
       logLine
     });
-    ctx.onStepTreeStatus?.(scenarioItem, "running");
     return;
   }
 
   if (event.event === "step_started") {
     const b = resolveStepDispatchBase(ctx, event, uri);
-    ctx.onStepTreeStatus?.(b.stepItem, "running");
     ctx.livePanelSink?.({
       type: "step_started",
       scenarioKey: b.scenarioKeyForStep,
@@ -394,12 +239,6 @@ export function dispatchLiveStreamEvent(
     if (!scenarioItem) {
       return;
     }
-    if (event.status) {
-      ctx.onStepTreeStatus?.(
-        scenarioItem,
-        liveStreamStatusToTreeStatus(event.status)
-      );
-    }
     ctx.livePanelSink?.({
       type: "scenario_finished",
       key: scenarioItem.id,
@@ -409,12 +248,6 @@ export function dispatchLiveStreamEvent(
   }
 
   if (event.event === "feature_finished") {
-    if (event.status) {
-      ctx.onStepTreeStatus?.(
-        ctx.featureItem,
-        liveStreamStatusToTreeStatus(event.status)
-      );
-    }
     ctx.livePanelSink?.({
       type: "feature_finished",
       status: event.status
@@ -446,8 +279,6 @@ export function dispatchLiveStreamEvent(
   if (err) {
     ctx.appendOutput(normalizeToCrlfChunk(err), b.outputAnchor, b.locVs);
   }
-
-  ctx.onStepTreeStatus?.(b.stepItem, statusForTree);
 
   const logHeadline = `${b.kw} ${b.stepText} ... ${statusForLog}\n`;
   const logHeadlineForPanel = stdoutPrefix + logHeadline;

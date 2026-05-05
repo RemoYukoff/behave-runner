@@ -1,13 +1,18 @@
 import * as vscode from "vscode";
-import type { BehaveHierarchyStore } from "./behaveHierarchyModel";
+import {
+  subscribeBehaveHierarchyChanges,
+  type BehaveHierarchyStore
+} from "./behaveHierarchyModel";
 import { parseFeatureFile } from "@behave-runner/core";
 import {
   getFeatureHierarchyNodeForPath,
   getScenarioNodeAtLine,
-  getScenarioOutlineExpansionNodes,
+  getScenarioOutlineExpansionNodes
+} from "./run/behaveHierarchyQueries";
+import {
   runBehaveHierarchyDebugSelection,
   runBehaveHierarchySelection
-} from "./behaveRun";
+} from "./run/behaveRunExecution";
 
 function lineRange(
   doc: vscode.TextDocument,
@@ -18,6 +23,13 @@ function lineRange(
 }
 
 class BehaveCodeLensProvider implements vscode.CodeLensProvider {
+  private readonly _onDidChangeCodeLenses = new vscode.EventEmitter<void>();
+  readonly onDidChangeCodeLenses = this._onDidChangeCodeLenses.event;
+
+  refresh(): void {
+    this._onDidChangeCodeLenses.fire();
+  }
+
   provideCodeLenses(
     document: vscode.TextDocument
   ): vscode.ProviderResult<vscode.CodeLens[]> {
@@ -103,8 +115,10 @@ export function registerBehaveCodeLens(
     { pattern: "**/*.feature" }
   ];
 
+  const codeLensProvider = new BehaveCodeLensProvider();
   context.subscriptions.push(
-    vscode.languages.registerCodeLensProvider(selector, new BehaveCodeLensProvider())
+    vscode.languages.registerCodeLensProvider(selector, codeLensProvider),
+    subscribeBehaveHierarchyChanges(() => codeLensProvider.refresh())
   );
 
   const runFeature = async (fsPath: string): Promise<void> => {

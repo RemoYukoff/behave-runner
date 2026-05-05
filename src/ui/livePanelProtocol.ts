@@ -2,7 +2,12 @@
  * Messages from the extension host to the Live run webview.
  * Keep in sync with media/liveRunPanel script handlers.
  */
+
+/** Bump when adding/removing/changing host→webview message shapes. */
+export const LIVE_PANEL_PROTOCOL_VERSION = 1;
+
 export type LivePanelToWebviewMessage =
+  | { type: "protocol"; version: number }
   | { type: "clear" }
   | { type: "replayCapture"; messages: unknown[] }
   | { type: "feature"; label: string }
@@ -58,4 +63,29 @@ export function isLivePanelFromWebviewMessage(
   msg: unknown
 ): msg is LivePanelFromWebviewMessage {
   return typeof msg === "object" && msg !== null && "type" in msg;
+}
+
+const HOST_TO_WEBVIEW_TYPES = new Set([
+  "protocol",
+  "clear",
+  "replayCapture",
+  "feature",
+  "scenario",
+  "step_started",
+  "scenario_finished",
+  "feature_finished",
+  "step",
+  "step_log_append",
+  "runCancelled"
+]);
+
+/** Best-effort guard before posting to the webview (extension host side). */
+export function isLivePanelToWebviewMessage(
+  msg: unknown
+): msg is LivePanelToWebviewMessage {
+  if (!msg || typeof msg !== "object" || !("type" in msg)) {
+    return false;
+  }
+  const t = (msg as { type?: unknown }).type;
+  return typeof t === "string" && HOST_TO_WEBVIEW_TYPES.has(t);
 }

@@ -2,7 +2,22 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { parseFeatureFile, type ParsedStep } from "@behave-runner/core";
-import { refreshBehaveHierarchy } from "./behaveRunState";
+
+const hierarchyChangeListeners = new Set<() => void>();
+
+/** When `.feature` roots change; e.g. CodeLens refresh. */
+export function subscribeBehaveHierarchyChanges(
+  listener: () => void
+): vscode.Disposable {
+  hierarchyChangeListeners.add(listener);
+  return new vscode.Disposable(() => hierarchyChangeListeners.delete(listener));
+}
+
+function notifyBehaveHierarchyChanged(): void {
+  for (const listener of hierarchyChangeListeners) {
+    listener();
+  }
+}
 
 export const FEATURE_PREFIX = "behave:feat:";
 export const SCEN_PREFIX = "behave:scen:";
@@ -203,14 +218,14 @@ export class BehaveHierarchyStore {
     const id = featureId(normalized);
     const node = createNode(id, path.basename(normalized), uri, undefined, true);
     this.roots.set(id, node);
-    refreshBehaveHierarchy();
+    notifyBehaveHierarchyChanged();
     return node;
   }
 
   removeFeatureByFsPath(fsPath: string): void {
     const id = featureId(fsPath);
     this.roots.delete(id);
-    refreshBehaveHierarchy();
+    notifyBehaveHierarchyChanged();
   }
 
   invalidateFeature(fsPath: string): void {
@@ -220,7 +235,7 @@ export class BehaveHierarchyStore {
       existing.children.clear();
       existing.canResolveChildren = true;
       existing.error = undefined;
-      refreshBehaveHierarchy();
+      notifyBehaveHierarchyChanged();
     }
   }
 }

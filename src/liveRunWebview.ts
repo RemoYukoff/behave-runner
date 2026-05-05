@@ -4,9 +4,10 @@ import * as vscode from "vscode";
 import {
   setLiveRunPanelGateway,
   type LiveRunPanelGateway
-} from "./behaveRunnerServices";
+} from "./behaveRunnerContext";
 import {
   isLivePanelFromWebviewMessage,
+  LIVE_PANEL_PROTOCOL_VERSION,
   type LivePanelToWebviewMessage
 } from "./ui/livePanelProtocol";
 
@@ -272,6 +273,10 @@ async function handleLiveRunWebviewMessage(
     return;
   }
   if (msg.type === "livePanelReady") {
+    void webview.postMessage({
+      type: "protocol",
+      version: LIVE_PANEL_PROTOCOL_VERSION
+    });
     postStoredLivePanelReplay(webview);
     return;
   }

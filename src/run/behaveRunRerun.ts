@@ -8,10 +8,7 @@ import {
 import { revealLiveRunPanel } from "../liveRunWebview";
 import type { BehaveJob } from "./behaveJobTypes";
 import { directFeatureChildren } from "./behaveJobTypes";
-import {
-  getBehaveHierarchyStoreRef,
-  getBehaveRunnerExtensionPath
-} from "../behaveRunnerServices";
+import { getBehaveHierarchyStoreRef } from "../behaveRunnerContext";
 import { runBehaveDebugJobs } from "./behaveRunDebug";
 import { runBehaveJobs } from "./behaveRunExecution";
 import type { SerializedBehaveJob } from "./behaveRunLastRun";
@@ -85,7 +82,7 @@ export async function rerunLastBehaveRun(): Promise<void> {
   try {
     await revealLiveRunPanel();
     if (snap.mode === "run") {
-      await runBehaveJobs(jobs, cts.token, getBehaveRunnerExtensionPath());
+      await runBehaveJobs(jobs, cts.token);
     } else {
       await runBehaveDebugJobs(jobs, cts.token);
     }
