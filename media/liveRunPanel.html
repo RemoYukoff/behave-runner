@@ -114,6 +114,8 @@
       display: flex;
       flex-direction: column;
       min-height: 0;
+      position: relative;
+      z-index: 0;
     }
     #treeRoot {
       flex: 1 1 auto;
@@ -125,26 +127,51 @@
       flex-direction: column;
       align-items: stretch;
     }
+    /*
+      Sin hueco en el flex: el separador ocupa 0px pero dibuja una banda a ambos lados
+      (::before) para hit-testing y un tinte semitransparente sobre árbol/consola.
+    */
     .splitter {
+      --splitter-bleed-half: 6px;
       box-sizing: border-box;
-      flex: 0 0 7px;
-      width: 7px;
-      min-width: 7px;
+      flex: 0 0 0;
+      width: 0;
+      min-width: 0;
       margin: 0;
-      padding: 0 1px;
+      padding: 0;
       cursor: col-resize;
       align-self: stretch;
-      background: transparent;
-      background-clip: content-box;
       position: relative;
       z-index: 2;
+      overflow: visible;
+      flex-shrink: 0;
+    }
+    .splitter::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: calc(2 * var(--splitter-bleed-half));
+      transform: translateX(-50%);
+      box-sizing: border-box;
+      pointer-events: auto;
       border-radius: 2px;
+      background: transparent;
     }
-    .splitter:hover {
-      background: var(--vscode-sash-hoverBorder, rgba(128, 128, 128, 0.35));
+    .splitter:hover::before {
+      background: color-mix(
+        in srgb,
+        var(--vscode-sash-hoverBorder, rgba(128, 128, 128, 0.55)) 42%,
+        transparent
+      );
     }
-    .splitter.is-dragging {
-      background: var(--vscode-focusBorder, rgba(0, 122, 204, 0.55));
+    .splitter.is-dragging::before {
+      background: color-mix(
+        in srgb,
+        var(--vscode-focusBorder, rgba(0, 122, 204, 0.65)) 48%,
+        transparent
+      );
     }
     .pane-console {
       flex: 1 1 0;
@@ -153,6 +180,8 @@
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      position: relative;
+      z-index: 0;
       /* Slightly separated from the tree: same family as panel/output in the workbench. */
       background-color: var(
         --vscode-panel-background,
@@ -426,8 +455,6 @@
       var anonStepSeq = 0;
       /** Must match .tree-children: padding-left 14px. */
       var TREE_CHILD_INDENT_PX = 14;
-      /** Subtracted from step row bleed so selection does not extend as far left as feature/scenario (one status-icon column). */
-      var TREE_STEP_BLEED_REDUCE_PX = 18;
 
       function applyTreeRowBleed(el, ancestorTreeChildDepth, bleedReducePx) {
         var reduce = bleedReducePx || 0;
@@ -1117,7 +1144,7 @@
           setRowTooltip(sline, sstepDisplay);
           sline.appendChild(sic);
           sline.appendChild(slab);
-          applyTreeRowBleed(sline, 2, TREE_STEP_BLEED_REDUCE_PX);
+          applyTreeRowBleed(sline, 2);
           applyStepGotoDataset(sline, m);
           pstarted.appendChild(sline);
           bindStepLine(sline, startedKey);
@@ -1197,7 +1224,7 @@
             setRowTooltip(line, stepDisplay);
             line.appendChild(ic);
             line.appendChild(lab);
-            applyTreeRowBleed(line, 2, TREE_STEP_BLEED_REDUCE_PX);
+            applyTreeRowBleed(line, 2);
             applyStepGotoDataset(line, m);
             parent.appendChild(line);
           }
