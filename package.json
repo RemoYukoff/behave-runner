@@ -2,7 +2,7 @@
     "name": "behave-runner",
     "displayName": "Behave Runner",
     "description": "Run Behave from CodeLens in .feature files and the Live run panel (run/debug), with Go to Definition, step autocomplete, and more.",
-    "version": "1.14.6",
+    "version": "1.14.7",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
     "repository": {
@@ -43,13 +43,105 @@
                 "configuration": "./language-configuration.json"
             }
         ],
-        "grammars": [
+        "semanticTokenTypes": [
             {
-                "language": "behave",
-                "scopeName": "source.behave",
-                "path": "./syntaxes/behave.tmLanguage.json"
+                "id": "behaveComment",
+                "superType": "comment",
+                "description": "Line comments and language pragma in .feature files"
+            },
+            {
+                "id": "behaveStructuralKeyword",
+                "superType": "keyword",
+                "description": "Feature:, Scenario:, Background:, Examples:, Rule:, …"
+            },
+            {
+                "id": "behaveStepKeyword",
+                "superType": "keyword",
+                "description": "Given, When, Then, And, But, *"
+            },
+            {
+                "id": "behaveTitle",
+                "superType": "class",
+                "description": "Titles after structural keywords"
+            },
+            {
+                "id": "behaveStepText",
+                "superType": "string",
+                "description": "Step body text"
+            },
+            {
+                "id": "behaveDocstring",
+                "superType": "string",
+                "description": "Triple-quoted / fenced docstrings"
+            },
+            {
+                "id": "behaveTable",
+                "superType": "string",
+                "description": "Example / data table rows"
+            },
+            {
+                "id": "behavePlaceholder",
+                "superType": "variable",
+                "description": "Outline placeholders <name>"
+            },
+            {
+                "id": "behaveTag",
+                "superType": "namespace",
+                "description": "Tags (@tag)"
             }
         ],
+        "semanticTokenScopes": [
+            {
+                "language": "behave",
+                "scopes": {
+                    "behaveComment": [
+                        "comment.line.number-sign",
+                        "comment.line"
+                    ],
+                    "behaveStructuralKeyword": [
+                        "keyword.control",
+                        "keyword.other"
+                    ],
+                    "behaveStepKeyword": [
+                        "entity.name.function",
+                        "keyword.other"
+                    ],
+                    "behaveTitle": [
+                        "entity.name.type.class",
+                        "entity.name"
+                    ],
+                    "behaveStepText": [
+                        "string.unquoted",
+                        "markup.inserted"
+                    ],
+                    "behaveDocstring": [
+                        "string.quoted.docstring",
+                        "string.quoted"
+                    ],
+                    "behaveTable": [
+                        "string.other",
+                        "markup.inline.raw"
+                    ],
+                    "behavePlaceholder": [
+                        "constant.character.format.placeholder",
+                        "variable.other"
+                    ],
+                    "behaveTag": [
+                        "entity.name.tag",
+                        "support.variable.annotation"
+                    ]
+                }
+            }
+        ],
+        "configurationDefaults": {
+            "editor.semanticTokenColorCustomizations": {
+                "rules": {
+                    "behaveTag:behave": "#FFA500",
+                    "behaveStepText:behave": "#FFFFFF",
+                    "behavePlaceholder:behave": "#FF8DC7"
+                }
+            }
+        },
         "viewsContainers": {
             "panel": [
                 {

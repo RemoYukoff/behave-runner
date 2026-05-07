@@ -1,14 +1,17 @@
 import {
+  analyzeFeatureDocument,
   findMatchingDefinitions,
   parseStepLine,
   parseStepLinePrefixForCompletion,
   resolveEffectiveKeyword,
+  type AnalyzeFeatureDocumentResult,
   type StepDefinition,
   type StepKeyword,
 } from "@behave-runner/core";
 import type {
   CompletionItem,
   Diagnostic,
+  LocationLink,
   Position,
   Range,
 } from "vscode-languageserver";
@@ -16,7 +19,6 @@ import {
   CompletionItemKind,
   DiagnosticSeverity,
   InsertTextFormat,
-  Location,
   Range as RangeConstructor,
 } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
@@ -42,75 +44,58 @@ function filterDefinitionsByKeyword(
   );
 }
 
-function getStepTextRange(
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Step keyword through end of line (LSP end-exclusive). Used as
+ * `LocationLink.originSelectionRange` so Alt-hover / go-to-def highlights the whole step.
+ */
+function getFullStepRange(
   lineText: string,
   line: number,
   stepKeyword: string
 ): Range | null {
+  const escaped = escapeRegExp(stepKeyword);
   const keywordMatch = lineText.match(
-    new RegExp(`^(\\s*)(${stepKeyword})\\s+`, "i")
+    new RegExp(`^(\\s*)(${escaped})(\\s+)`, "i")
   );
   if (!keywordMatch) {
     return null;
   }
-  const indent = keywordMatch[1].length;
-  const keywordLength = keywordMatch[2].length;
-  const startChar = indent + keywordLength + 1;
+  const kwStart = keywordMatch[1].length;
   const endChar = lineText.trimEnd().length;
-  if (startChar >= endChar) {
+  if (kwStart >= endChar) {
     return null;
   }
-  return RangeConstructor.create(line, startChar, line, endChar);
+  return RangeConstructor.create(line, kwStart, line, endChar);
+}
+
+export function diagnosticsFromFeatureAnalysis(
+  analysis: AnalyzeFeatureDocumentResult
+): Diagnostic[] {
+  return analysis.undefinedStepDiagnostics.map((d) => ({
+    range: RangeConstructor.create(
+      d.line,
+      d.startCharacter,
+      d.line,
+      d.endCharacter
+    ),
+    message: d.message,
+    severity: DiagnosticSeverity.Warning,
+    source: "Behave Runner",
+    code: d.code,
+  }));
 }
 
 export function computeFeatureDiagnostics(
   document: TextDocument,
   allDefinitions: StepDefinition[]
 ): Diagnostic[] {
-  const text = document.getText();
-  const lines = text.split("\n");
-  const diagnostics: Diagnostic[] = [];
-  let previousKeyword: StepKeyword | null = null;
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const lineText = lines[lineIndex];
-    const stepInfo = parseStepLine(lineText, previousKeyword);
-    if (!stepInfo) {
-      if (lineText.match(/^\s*(Scenario|Feature|Background|Examples)/i)) {
-        previousKeyword = null;
-      }
-      continue;
-    }
-
-    if (stepInfo.effectiveKeyword) {
-      previousKeyword = stepInfo.effectiveKeyword;
-    }
-
-    const matches = findMatchingDefinitions(
-      stepInfo.text,
-      stepInfo.effectiveKeyword,
-      allDefinitions
-    );
-
-    if (matches.length === 0) {
-      const stepMatch = lineText.match(/^\s*(Given|When|Then|And|But)\s+/i);
-      const startChar = stepMatch ? stepMatch[0].length : 0;
-      diagnostics.push({
-        range: RangeConstructor.create(
-          lineIndex,
-          startChar,
-          lineIndex,
-          lineText.length
-        ),
-        message: `Undefined step: "${stepInfo.text}"`,
-        severity: DiagnosticSeverity.Warning,
-        source: "Behave Runner",
-        code: "undefined-step",
-      });
-    }
-  }
-
-  return diagnostics;
+  return diagnosticsFromFeatureAnalysis(
+    analyzeFeatureDocument(document.getText(), allDefinitions)
+  );
 }
 
 export function computeCompletions(
@@ -207,7 +192,7 @@ export function computeDefinitions(
   document: TextDocument,
   position: Position,
   allDefinitions: StepDefinition[]
-): Location[] | null {
+): LocationLink[] | null {
   const lines = document.getText().split("\n");
   const lineText = lines[position.line] ?? "";
   const effectiveKeyword = resolveEffectiveKeyword(lines, position.line);
@@ -216,7 +201,7 @@ export function computeDefinitions(
     return null;
   }
 
-  const originRange = getStepTextRange(
+  const originRange = getFullStepRange(
     lineText,
     position.line,
     stepInfo.keyword
@@ -234,16 +219,23 @@ export function computeDefinitions(
     return null;
   }
 
-  return matchingDefs.map((def) =>
-    Location.create(
-      URI.file(def.filePath).toString(),
-      RangeConstructor.create(
+  return matchingDefs.map(
+    (def): LocationLink => ({
+      originSelectionRange: originRange,
+      targetUri: URI.file(def.filePath).toString(),
+      targetRange: RangeConstructor.create(
         def.line,
         def.character,
         def.line,
-        def.character
-      )
-    )
+        def.character + 1
+      ),
+      targetSelectionRange: RangeConstructor.create(
+        def.line,
+        def.character,
+        def.line,
+        def.character + 1
+      ),
+    })
   );
 }
 
@@ -254,7 +246,10 @@ function positionInRange(position: Position, range: Range): boolean {
   if (position.line === range.start.line && position.character < range.start.character) {
     return false;
   }
-  if (position.line === range.end.line && position.character > range.end.character) {
+  if (
+    position.line === range.end.line &&
+    position.character >= range.end.character
+  ) {
     return false;
   }
   return true;

@@ -15,6 +15,7 @@ import {
   Location,
   ProposedFeatures,
   Range,
+  SemanticTokensBuilder,
   TextDocuments,
   TextDocumentSyncKind,
   TextEdit,
@@ -25,9 +26,19 @@ import { URI } from "vscode-uri";
 import {
   computeCompletions,
   computeDefinitions,
-  computeFeatureDiagnostics,
+  diagnosticsFromFeatureAnalysis,
 } from "./featureHandlers";
+import {
+  clearFeatureAnalysisCache,
+  evictFeatureAnalysisForUri,
+  getFeatureAnalysis,
+} from "./featureAnalysisCache";
 import { FeatureStepIndex } from "./featureStepIndex";
+import {
+  BEHAVE_SEMANTIC_TOKEN_LEGEND,
+  buildBehaveSemanticTokensFromAnalysis,
+  buildBehaveSemanticTokensInRangeFromAnalysis,
+} from "./behaveSemanticTokens";
 import { StepDefinitionIndex } from "./stepIndex";
 
 const connection = createConnection(ProposedFeatures.all);
@@ -60,11 +71,11 @@ function workspaceFolderForDoc(docUri: string): string | undefined {
 
 function publishDiagnostics(document: TextDocument): void {
   const uri = document.uri;
-  const diags = computeFeatureDiagnostics(
-    document,
-    stepIndex.getDefinitions()
-  );
-  connection.sendDiagnostics({ uri, diagnostics: diags });
+  const analysis = getFeatureAnalysis(document, stepIndex.getDefinitions());
+  connection.sendDiagnostics({
+    uri,
+    diagnostics: diagnosticsFromFeatureAnalysis(analysis),
+  });
 }
 
 async function applyBehaveConfiguration(): Promise<void> {
@@ -106,6 +117,7 @@ async function applyBehaveConfiguration(): Promise<void> {
 
 async function rebuildStepAndFeatureIndexes(): Promise<void> {
   await Promise.all([stepIndex.rebuild(), featureStepIndex.rebuild()]);
+  clearFeatureAnalysisCache();
 }
 
 async function refreshConfigurationAndIndexes(): Promise<void> {
@@ -120,6 +132,7 @@ function scheduleStepIndexRebuild(): void {
   clearTimeout(stepDebounceTimer);
   stepDebounceTimer = setTimeout(() => {
     void stepIndex.rebuild().then(() => {
+      clearFeatureAnalysisCache();
       for (const doc of documents.all()) {
         publishDiagnostics(doc);
       }
@@ -155,6 +168,11 @@ connection.onInitialize((params: InitializeParams) => {
       definitionProvider: true,
       documentFormattingProvider: true,
       documentRangeFormattingProvider: true,
+      semanticTokensProvider: {
+        legend: BEHAVE_SEMANTIC_TOKEN_LEGEND,
+        full: true,
+        range: true,
+      },
     },
   };
 });
@@ -261,6 +279,7 @@ documents.onDidOpen((e) => {
 });
 
 documents.onDidClose((e) => {
+  evictFeatureAnalysisForUri(e.document.uri);
   connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
 });
 
@@ -287,6 +306,26 @@ connection.onDefinition((params) => {
     params.position,
     stepIndex.getDefinitions()
   );
+});
+
+connection.languages.semanticTokens.on((params) => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) {
+    return new SemanticTokensBuilder().build();
+  }
+  const analysis = getFeatureAnalysis(doc, stepIndex.getDefinitions());
+  return buildBehaveSemanticTokensFromAnalysis(analysis);
+});
+
+connection.languages.semanticTokens.onRange((params) => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) {
+    return new SemanticTokensBuilder().build();
+  }
+  const analysis = getFeatureAnalysis(doc, stepIndex.getDefinitions());
+  const start = params.range.start.line;
+  const end = params.range.end.line;
+  return buildBehaveSemanticTokensInRangeFromAnalysis(analysis, start, end);
 });
 
 connection.onDocumentFormatting((params) => {

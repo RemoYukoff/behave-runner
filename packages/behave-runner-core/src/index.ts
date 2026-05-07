@@ -18,6 +18,17 @@ export type {
 } from "./featureParser";
 export { parseFeatureFile } from "./featureParser";
 
+export type {
+  AnalyzeFeatureDocumentResult,
+  FeatureSemanticTokenKind,
+  FeatureSemanticTokenSpan,
+  FeatureUndefinedStepDiagnostic,
+} from "./featureSemanticTokens";
+export {
+  analyzeFeatureDocument,
+  computeFeatureSemanticTokenSpans,
+} from "./featureSemanticTokens";
+
 export {
   behavePatternToRegex,
   findMatchingDefinitions,
