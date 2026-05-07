@@ -23,6 +23,35 @@ const DEFAULT_PLACEHOLDER_PATTERN = ".+";
  */
 const OUTLINE_PLACEHOLDER_PATTERN = "<[^>]+>";
 
+function buildBehavePatternRegexBody(
+  pattern: string,
+  capturePlaceholders: boolean
+): string {
+  let regexStr = pattern.replace(/[.*+?^${}()|[\]\\]/g, (char) => {
+    if (char === "{" || char === "}") {
+      return char;
+    }
+    return "\\" + char;
+  });
+
+  let captureIndex = 0;
+  regexStr = regexStr.replace(/\{(\w+)(?::(\w))?\}/g, (_, _name, type) => {
+    const typePattern =
+      type && BEHAVE_TYPE_PATTERNS[type]
+        ? BEHAVE_TYPE_PATTERNS[type]
+        : DEFAULT_PLACEHOLDER_PATTERN;
+
+    const inner = `(?:${typePattern}|${OUTLINE_PLACEHOLDER_PATTERN})`;
+    if (capturePlaceholders) {
+      const g = `p${captureIndex++}`;
+      return `(?<${g}>${inner})`;
+    }
+    return inner;
+  });
+
+  return regexStr;
+}
+
 /**
  * Converts a Behave pattern string to a RegExp.
  *
@@ -39,32 +68,59 @@ const OUTLINE_PLACEHOLDER_PATTERN = "<[^>]+>";
  * @returns A RegExp that matches step text (including Scenario Outline placeholders)
  */
 export function behavePatternToRegex(pattern: string): RegExp {
-  // Escape regex special characters except for our placeholders
-  let regexStr = pattern.replace(/[.*+?^${}()|[\]\\]/g, (char) => {
-    // Don't escape curly braces yet, we'll handle them specially
-    if (char === "{" || char === "}") {
-      return char;
+  return new RegExp(`^${buildBehavePatternRegexBody(pattern, false)}$`, "i");
+}
+
+/**
+ * Same as {@link behavePatternToRegex} but each `{placeholder}` becomes a named capture
+ * (`p0`, `p1`, …) so match indices can be mapped to `.feature` step text for highlighting.
+ * Uses the `d` flag (requires ES2022 / modern Node).
+ */
+export function behavePatternToCaptureRegex(pattern: string): RegExp {
+  return new RegExp(`^${buildBehavePatternRegexBody(pattern, true)}$`, "id");
+}
+
+/**
+ * For a concrete step line body and a Behave `@step` pattern string, returns UTF-16 ranges
+ * (relative to {@link String#trim trim}(stepText)) for each `{capture}` that matched.
+ * Used to paint placeholder color only on values bound to pattern captures — not literals
+ * like quotes or Fixed words in the pattern.
+ */
+export function capturePlaceholderRangesFromBehavePattern(
+  stepText: string,
+  pattern: string
+): { start: number; end: number }[] | null {
+  let re: RegExp;
+  try {
+    re = behavePatternToCaptureRegex(pattern);
+  } catch {
+    return null;
+  }
+  const trimmed = stepText.trim();
+  const m = re.exec(trimmed);
+  const groups = m?.indices?.groups;
+  if (!m || !groups) {
+    return null;
+  }
+  const ranges: { start: number; end: number }[] = [];
+  for (const key of Object.keys(groups)) {
+    const span = groups[key];
+    if (
+      span &&
+      typeof span[0] === "number" &&
+      typeof span[1] === "number" &&
+      span[1] > span[0]
+    ) {
+      ranges.push({ start: span[0], end: span[1] });
     }
-    return "\\" + char;
-  });
-
-  // Replace Behave placeholders with regex groups that accept:
-  // 1. The expected value type (e.g., \d+ for integers)
-  // 2. OR a Scenario Outline placeholder (<name>)
-  // Pattern: {name} or {name:type}
-  regexStr = regexStr.replace(/\{(\w+)(?::(\w))?\}/g, (_, _name, type) => {
-    const typePattern = type && BEHAVE_TYPE_PATTERNS[type]
-      ? BEHAVE_TYPE_PATTERNS[type]
-      : DEFAULT_PLACEHOLDER_PATTERN;
-
-    // Non-capturing group with alternation: (typePattern|<placeholder>)
-    return `(?:${typePattern}|${OUTLINE_PLACEHOLDER_PATTERN})`;
-  });
-
-  // Handle optional text in Behave patterns: (?:optional)?
-  // This is already valid regex, so we leave it as-is
-
-  return new RegExp(`^${regexStr}$`, "i");
+  }
+  if (ranges.length === 0) {
+    return null;
+  }
+  ranges.sort((a, b) =>
+    a.start !== b.start ? a.start - b.start : b.end - a.end
+  );
+  return ranges;
 }
 
 /**

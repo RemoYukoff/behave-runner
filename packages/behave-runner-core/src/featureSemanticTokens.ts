@@ -1,4 +1,8 @@
-import { findMatchingDefinitions, parseStepLine } from "./stepMatcher";
+import {
+  capturePlaceholderRangesFromBehavePattern,
+  findMatchingDefinitions,
+  parseStepLine,
+} from "./stepMatcher";
 import type { StepDefinition, StepKeyword } from "./types";
 
 /** Undefined-step finding for `.feature` lines; map to LSP Diagnostic in the server. */
@@ -91,27 +95,28 @@ function pushTagsLine(line: string, lineIndex: number, out: FeatureSemanticToken
   }
 }
 
-/** Scenario outline `<name>` and Behave-style `{name}` / `{name:type}` in step or table cells. */
+/** Scenario outline `<name>` in step or table cells. */
 const OUTLINE_PLACEHOLDER_RE = /<[^>]+>/g;
-const CURLY_PLACEHOLDER_RE = /\{[^{}]+\}/g;
 
-function collectPlaceholderRanges(segment: string): { start: number; end: number }[] {
+function collectOutlinePlaceholderRanges(segment: string): { start: number; end: number }[] {
   const raw: { start: number; end: number }[] = [];
   let m: RegExpExecArray | null;
   OUTLINE_PLACEHOLDER_RE.lastIndex = 0;
   while ((m = OUTLINE_PLACEHOLDER_RE.exec(segment)) !== null) {
     raw.push({ start: m.index, end: m.index + m[0].length });
   }
-  CURLY_PLACEHOLDER_RE.lastIndex = 0;
-  while ((m = CURLY_PLACEHOLDER_RE.exec(segment)) !== null) {
-    raw.push({ start: m.index, end: m.index + m[0].length });
-  }
-  raw.sort((a, b) =>
+  return raw;
+}
+
+function pickNonOverlappingRanges(
+  raw: { start: number; end: number }[]
+): { start: number; end: number }[] {
+  const sorted = [...raw].sort((a, b) =>
     a.start !== b.start ? a.start - b.start : b.end - a.end
   );
   const picked: { start: number; end: number }[] = [];
   let coverUntil = -1;
-  for (const r of raw) {
+  for (const r of sorted) {
     if (r.start < coverUntil) {
       continue;
     }
@@ -128,13 +133,27 @@ function pushSliceWithPlaceholders(
   from: number,
   sliceLen: number,
   gapKind: "stepText" | "table",
-  out: FeatureSemanticTokenSpan[]
+  out: FeatureSemanticTokenSpan[],
+  definitionCaptureRangesInSegment?: { start: number; end: number }[]
 ): void {
   if (sliceLen <= 0) {
     return;
   }
   const segment = line.slice(from, from + sliceLen);
-  const matches = collectPlaceholderRanges(segment);
+  const raw: { start: number; end: number }[] = [
+    ...collectOutlinePlaceholderRanges(segment),
+  ];
+  if (definitionCaptureRangesInSegment) {
+    const segLen = segment.length;
+    for (const r of definitionCaptureRangesInSegment) {
+      const start = Math.max(0, r.start);
+      const end = Math.min(segLen, r.end);
+      if (end > start) {
+        raw.push({ start, end });
+      }
+    }
+  }
+  const matches = pickNonOverlappingRanges(raw);
   let last = 0;
   for (const r of matches) {
     if (r.start > last) {
@@ -168,9 +187,18 @@ function pushTextWithPlaceholders(
   lineIndex: number,
   from: number,
   sliceLen: number,
-  out: FeatureSemanticTokenSpan[]
+  out: FeatureSemanticTokenSpan[],
+  definitionCaptureRangesInSegment?: { start: number; end: number }[]
 ): void {
-  pushSliceWithPlaceholders(line, lineIndex, from, sliceLen, "stepText", out);
+  pushSliceWithPlaceholders(
+    line,
+    lineIndex,
+    from,
+    sliceLen,
+    "stepText",
+    out,
+    definitionCaptureRangesInSegment
+  );
 }
 
 function processStepLine(
@@ -200,8 +228,46 @@ function processStepLine(
   const rest = line.slice(afterKw);
   const trimmedRest = rest.trimEnd();
 
+  let matchedStepDefs: StepDefinition[] = [];
+  if (definitions !== undefined && stepInfo) {
+    matchedStepDefs = findMatchingDefinitions(
+      stepInfo.text,
+      stepInfo.effectiveKeyword,
+      definitions
+    );
+  }
+
+  let defCapturesInSegment: { start: number; end: number }[] | undefined;
+  if (
+    matchedStepDefs.length > 0 &&
+    stepInfo &&
+    trimmedRest.length > 0
+  ) {
+    const lead = rest.match(/^\s*/)?.[0].length ?? 0;
+    for (const def of matchedStepDefs) {
+      const relToTrim = capturePlaceholderRangesFromBehavePattern(
+        stepInfo.text,
+        def.pattern
+      );
+      if (relToTrim && relToTrim.length > 0) {
+        defCapturesInSegment = relToTrim.map((r) => ({
+          start: lead + r.start,
+          end: lead + r.end,
+        }));
+        break;
+      }
+    }
+  }
+
   if (trimmedRest.length > 0) {
-    pushTextWithPlaceholders(line, lineIndex, afterKw, trimmedRest.length, semanticOut);
+    pushTextWithPlaceholders(
+      line,
+      lineIndex,
+      afterKw,
+      trimmedRest.length,
+      semanticOut,
+      defCapturesInSegment
+    );
   }
 
   let nextKeyword = previousKeyword;
@@ -210,12 +276,7 @@ function processStepLine(
   }
 
   if (definitions !== undefined && stepInfo) {
-    const matches = findMatchingDefinitions(
-      stepInfo.text,
-      stepInfo.effectiveKeyword,
-      definitions
-    );
-    if (matches.length === 0) {
+    if (matchedStepDefs.length === 0) {
       const stepLead = line.match(/^\s*(Given|When|Then|And|But|\*)\s+/i);
       const startChar = stepLead ? stepLead[0].length : 0;
       diagnosticOut.push({

@@ -30,7 +30,9 @@ export {
 } from "./featureSemanticTokens";
 
 export {
+  behavePatternToCaptureRegex,
   behavePatternToRegex,
+  capturePlaceholderRangesFromBehavePattern,
   findMatchingDefinitions,
   matchesStepDefinition,
   parseStepLine,
