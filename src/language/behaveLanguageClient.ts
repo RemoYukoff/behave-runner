@@ -31,6 +31,11 @@ export function reportBehaveLanguageServerStopped(): void {
   languageServerHealth = "stopped";
 }
 
+/** Run `server.js` with the editor's bundled Node-compatible runtime (no `node` on PATH). */
+function languageServerExecutableEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
+}
+
 export function createBehaveLanguageClient(
   context: vscode.ExtensionContext
 ): LanguageClient {
@@ -45,13 +50,15 @@ export function createBehaveLanguageClient(
 
   const serverOptions: ServerOptions = {
     run: {
-      command: "node",
+      command: process.execPath,
       args: [serverModule],
+      options: { env: languageServerExecutableEnv() },
       transport: TransportKind.stdio,
     },
     debug: {
-      command: "node",
+      command: process.execPath,
       args: ["--nolazy", "--inspect=6009", serverModule],
+      options: { env: languageServerExecutableEnv() },
       transport: TransportKind.stdio,
     },
   };

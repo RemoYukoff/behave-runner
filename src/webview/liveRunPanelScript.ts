@@ -30,6 +30,11 @@ declare function acquireVsCodeApi(): {
       /** Set when `runCancelled` is received so the feature row does not stay on spinner if no scenario ran yet. */
       var featureRunCancelled = false;
       /**
+       * Behave `feature_finished` status when no scenario rows exist (e.g. before_feature / init hook failure).
+       * Ignored once `scenarioIcons` is non-empty — rollup uses per-scenario icons instead.
+       */
+      var featureFinishedKind = "";
+      /**
        * When true, each incoming `scenario` row selects itself so the console follows the run.
        * Any explicit tree click (feature / scenario / step) sets this false so a failing scenario
        * stays selected until the next run (`feature` / `clear`).
@@ -187,7 +192,15 @@ declare function acquireVsCodeApi(): {
 
       function finalStatusKind(status) {
         var s = (status || "").toLowerCase();
-        if (s === "failed" || s === "error" || s === "undefined") return "fail";
+        if (
+          s === "failed" ||
+          s === "error" ||
+          s === "undefined" ||
+          s === "hook_error" ||
+          s === "cleanup_error"
+        ) {
+          return "fail";
+        }
         if (s === "passed" || s === "pending") return "pass";
         if (s === "skipped") return "skip";
         return "";
@@ -251,6 +264,18 @@ declare function acquireVsCodeApi(): {
         if (!featureIconEl) return;
         var keys = Object.keys(scenarioIcons);
         if (keys.length === 0) {
+          if (featureFinishedKind === "fail") {
+            setRowIcon(featureIconEl, "fail");
+            return;
+          }
+          if (featureFinishedKind === "pass") {
+            setRowIcon(featureIconEl, "pass");
+            return;
+          }
+          if (featureFinishedKind === "skip") {
+            setRowIcon(featureIconEl, "skip");
+            return;
+          }
           setRowIcon(featureIconEl, featureRunCancelled ? "skip" : "pending");
           return;
         }
@@ -959,6 +984,7 @@ declare function acquireVsCodeApi(): {
           scenarioRunningStepCount = Object.create(null);
           pendingStepRowByKey = Object.create(null);
           featureRunCancelled = false;
+          featureFinishedKind = "";
           liveFollowSelection = true;
           hideConsoleFind({ resetQuery: true });
           if (consoleOut) consoleOut.textContent = "";
@@ -967,6 +993,7 @@ declare function acquireVsCodeApi(): {
         }
         if (m.type === "feature") {
           featureRunCancelled = false;
+          featureFinishedKind = "";
           liveFollowSelection = true;
           ensureFeatureBody(m.label);
           refreshFeatureIcon();
@@ -1050,6 +1077,11 @@ declare function acquireVsCodeApi(): {
             scenarioSkipped[fsk] = true;
           }
           refreshScenarioIcon(fsk);
+          refreshFeatureIcon();
+          return;
+        }
+        if (m.type === "feature_finished") {
+          featureFinishedKind = finalStatusKind(m.status);
           refreshFeatureIcon();
           return;
         }

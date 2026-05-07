@@ -1,6 +1,7 @@
 import * as cp from "child_process";
 import * as path from "path";
 import type { BehaveJob } from "./behaveJobTypes";
+import { behavesSupportsExplicitNoCaptureStdoutFlag } from "./behaveVersion";
 
 export function liveFormatterBundlePath(extensionPath: string): string {
   return path.join(extensionPath, "media", "python");
@@ -38,8 +39,13 @@ export function spawnBehave(
     liveFormatterPythonRoot: string;
   }
 ): cp.ChildProcessWithoutNullStreams {
+  const stdoutCaptureFlag = behavesSupportsExplicitNoCaptureStdoutFlag(
+    interpreterPath
+  )
+    ? "--no-capture-stdout"
+    : "--no-capture";
   const behaveArgs: string[] = [
-    "--no-capture-stdout",
+    stdoutCaptureFlag,
     "--no-capture-stderr",
     "--no-logcapture",
     "--no-summary",

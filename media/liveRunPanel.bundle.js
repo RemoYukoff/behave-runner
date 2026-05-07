@@ -22,6 +22,7 @@
     var consoleFindMarks = [];
     var featureBody = null;
     var featureRunCancelled = false;
+    var featureFinishedKind = "";
     var liveFollowSelection = true;
     var currentScenarioSteps = null;
     var scenarioStepsBodyByKey = /* @__PURE__ */ Object.create(null);
@@ -147,7 +148,9 @@
     }
     function finalStatusKind(status) {
       var s = (status || "").toLowerCase();
-      if (s === "failed" || s === "error" || s === "undefined") return "fail";
+      if (s === "failed" || s === "error" || s === "undefined" || s === "hook_error" || s === "cleanup_error") {
+        return "fail";
+      }
       if (s === "passed" || s === "pending") return "pass";
       if (s === "skipped") return "skip";
       return "";
@@ -199,6 +202,18 @@
       if (!featureIconEl) return;
       var keys = Object.keys(scenarioIcons);
       if (keys.length === 0) {
+        if (featureFinishedKind === "fail") {
+          setRowIcon(featureIconEl, "fail");
+          return;
+        }
+        if (featureFinishedKind === "pass") {
+          setRowIcon(featureIconEl, "pass");
+          return;
+        }
+        if (featureFinishedKind === "skip") {
+          setRowIcon(featureIconEl, "skip");
+          return;
+        }
         setRowIcon(featureIconEl, featureRunCancelled ? "skip" : "pending");
         return;
       }
@@ -815,6 +830,7 @@
         scenarioRunningStepCount = /* @__PURE__ */ Object.create(null);
         pendingStepRowByKey = /* @__PURE__ */ Object.create(null);
         featureRunCancelled = false;
+        featureFinishedKind = "";
         liveFollowSelection = true;
         hideConsoleFind({ resetQuery: true });
         if (consoleOut) consoleOut.textContent = "";
@@ -823,6 +839,7 @@
       }
       if (m.type === "feature") {
         featureRunCancelled = false;
+        featureFinishedKind = "";
         liveFollowSelection = true;
         ensureFeatureBody(m.label);
         refreshFeatureIcon();
@@ -904,6 +921,11 @@
           scenarioSkipped[fsk] = true;
         }
         refreshScenarioIcon(fsk);
+        refreshFeatureIcon();
+        return;
+      }
+      if (m.type === "feature_finished") {
+        featureFinishedKind = finalStatusKind(m.status);
         refreshFeatureIcon();
         return;
       }

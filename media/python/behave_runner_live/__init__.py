@@ -196,3 +196,9 @@ class BehaveRunnerLiveFormatter(Formatter):
     def eof(self):
         self._emit_scenario_finished_if_any()
         self._emit_feature_finished_if_any()
+
+    def close(self):
+        # Base `Formatter.close()` only closes the stream; some Behave versions or
+        # failure paths never call `eof()`, leaving the Live panel without `feature_finished`.
+        self.eof()
+        super().close()

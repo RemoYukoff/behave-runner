@@ -1,55 +1,40 @@
 # Behave Runner
 
-A VS Code extension for running, debugging, and navigating Behave (Python BDD) scenarios.
+> Run and debug [Behave](https://behave.readthedocs.io/) scenarios in VS Code, jump between `.feature` files and Python steps, and get inline help while you write Gherkin.
+
+[Install from the Marketplace](https://marketplace.visualstudio.com/items?itemName=remoyukoff.behave-runner) · [Source code](https://github.com/RemoYukoff/behave-runner)
 
 ## Features
 
-### Run & Debug Scenarios
+- **Run & debug** — **Run** and **Debug** links appear above `Feature`, `Scenario`, and outline rows in `.feature` files.
+- **Live run** — Open the bottom **Behave** panel → **Live run** to follow progress; full log text is under **Output → Behave Runner**.
+- **Go to step code** — From a feature step, use **Go to Definition** (e.g. **Cmd+click** / **Ctrl+click**) to open the Python step.
+- **Find usages** — From the Python step function, use **Go to Definition** or **Find All References** to see matching feature lines.
+- **Autocomplete** — After `Given`, `When`, `Then`, `And`, `But`, and `*`, suggestions match your step definitions.
+- **Missing steps** — Steps without a definition are highlighted so you can fix them quickly.
+- **Look & format** — Clearer colors for keywords, tags, tables, and placeholders; **Format Document** cleans up `.feature` files.
 
-Use the **Testing** view and the **gutter** next to `Feature:` / `Scenario:` lines in `.feature` files.
+Open the **Command Palette** and search **Behave** to cancel a run, rerun the last run, or focus the live view.
 
-- **Left-click** the gutter icon → run with the selected **Run** profile (Behave in Test Results).
-- **Right-click** the gutter icon → context menu with **Run**, **Debug**, **Reveal in Test Explorer**, etc.
-- Expand tests in the Testing sidebar to run or debug a whole feature or a single scenario.
-- **Behave Runner** in the Output panel shows everything Behave writes to stdout and stderr. **Test Results** output is grouped under each feature, scenario, and step.
+## Before you start
 
-### Go to Step Definition
-
-**Ctrl+Click** (Cmd+Click on Mac) on any step in a `.feature` file to navigate to its Python definition.
-
-Supports all Behave patterns:
-- Typed placeholders: `{name:d}`, `{value:f}`, `{word:w}`
-- Untyped placeholders: `{name}`
-- Scenario Outline placeholders: `<variable>`
-
-### Find Step Usages
-
-**Ctrl+Click** (Cmd+Click on Mac) on a step function in Python to see all `.feature` files where that step is used. This works on any function decorated with `@given`, `@when`, `@then`, or `@step`.
-
-### Step Autocomplete
-
-Start typing a step after `Given`, `When`, `Then`, `And`, or `But` and get autocomplete suggestions based on your existing Python step definitions.
-
-- Filters suggestions by keyword (`Given` shows `@given` + `@step` definitions)
-- Converts Behave placeholders to VS Code snippets for easy tab completion
-- Resolves `And`/`But` to their parent keyword for accurate filtering
-
-### Undefined Step Diagnostics
-
-Get real-time warnings for steps in `.feature` files that don't have a matching Python definition. Undefined steps are highlighted with a yellow underline.
-
-### Syntax Highlighting
-
-Full syntax highlighting for `.feature` files including keywords, strings, comments, tags, and data tables.
+1. Install Behave in the Python environment you use for the project: `pip install behave`.
+2. Choose that interpreter in VS Code (the [Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python) extension helps).
+3. Open a **folder** that contains at least one `.feature` file so the extension activates.
 
 ## Configuration
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `behaveRunner.debug.justMyCode` | Only debug user code (skip library code) | `true` |
-| `behaveRunner.stepDefinitions.patterns` | Glob patterns for Python step definition files | `["**/steps/**/*.py", "**/*_steps.py", "**/step_*.py", "**/steps.py"]` |
-| `behaveRunner.featureFiles.patterns` | Glob patterns for Gherkin feature files | `["**/*.feature"]` |
+In **Settings**, search **Behave Runner**, or edit `settings.json` directly.
 
-## Requirements
+| Setting | What it does | Default |
+| :--- | :--- | :--- |
+| `behaveRunner.debug.justMyCode` | When debugging, stay in your code and skip library internals | `true` |
+| `behaveRunner.stepDefinitions.patterns` | Glob patterns for Python files that define steps | `**/steps/**/*.py`, `**/*_steps.py`, `**/step_*.py`, `**/steps.py` |
+| `behaveRunner.featureFiles.patterns` | Glob patterns for Gherkin feature files | `**/*.feature` |
 
-- Python with Behave installed (`pip install behave`)
+## Troubleshooting
+
+- Restart VS Code if navigation or suggestions stop responding.
+- If runs fail, confirm the selected Python environment has Behave installed.
+
+*MIT License*
