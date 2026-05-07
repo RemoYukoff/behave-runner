@@ -1,3 +1,7 @@
+import {
+  consumeMultilineDocstringLine,
+  type MultilineDocstringState,
+} from "./featureDocstring";
 import { StepKeyword } from "./types";
 import { parseStepLine } from "./stepMatcher";
 
@@ -94,6 +98,7 @@ export function parseFeatureFile(filePath: string, content: string): ParsedFeatu
   const scenarios: ParsedScenario[] = [];
 
   let previousKeyword: StepKeyword | null = null;
+  const docState: MultilineDocstringState = { active: false, delim: null };
   let inFeature = false;
   let collectingBackground = false;
   let currentScenario: ParsedScenario | null = null;
@@ -115,6 +120,10 @@ export function parseFeatureFile(filePath: string, content: string): ParsedFeatu
     const line = lines[lineIndex];
     const trimmed = line.trim();
 
+    if (consumeMultilineDocstringLine(line, docState)) {
+      continue;
+    }
+
     if (trimmed.startsWith("#") || trimmed === "") {
       continue;
     }
@@ -134,6 +143,8 @@ export function parseFeatureFile(filePath: string, content: string): ParsedFeatu
       previousKeyword = null;
       inExamplesTable = false;
       outlineExamplesBlockIndex = 0;
+      docState.active = false;
+      docState.delim = null;
       continue;
     }
 
@@ -247,7 +258,7 @@ export function parseFeatureFile(filePath: string, content: string): ParsedFeatu
 
     const stepInfo = parseStepLine(line, previousKeyword);
     if (!stepInfo) {
-      if (trimmed.startsWith("@") || trimmed.startsWith('"""') || trimmed.startsWith("|")) {
+      if (trimmed.startsWith("@") || trimmed.startsWith("|")) {
         continue;
       }
       if (collectingBackground && background) {

@@ -1,3 +1,7 @@
+import {
+  consumeMultilineDocstringLine,
+  type MultilineDocstringState,
+} from "./featureDocstring";
 import { parseStepLine } from "./stepMatcher";
 import type { FeatureStep, StepKeyword } from "./types";
 
@@ -14,12 +18,19 @@ export function extractFeatureStepsFromContent(
   const steps: FeatureStep[] = [];
   const lines = content.split("\n");
   let previousKeyword: StepKeyword | null = null;
+  const docState: MultilineDocstringState = { active: false, delim: null };
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
 
+    if (consumeMultilineDocstringLine(line, docState)) {
+      continue;
+    }
+
     if (line.match(/^\s*(Feature|Scenario|Scenario Outline|Background|Examples):/i)) {
       previousKeyword = null;
+      docState.active = false;
+      docState.delim = null;
       continue;
     }
 
