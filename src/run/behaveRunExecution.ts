@@ -22,6 +22,10 @@ import {
   releaseActiveRunCancellation,
   takeOverActiveRunCancellation
 } from "./behaveRunCancellation";
+import {
+  isCurrentBehaveLiveSession,
+  nextBehaveLiveSessionId
+} from "./behaveRunSession";
 import type { BehaveRunSinks } from "./behaveRunPorts";
 import { runBehaveDebugJobs } from "./behaveRunDebug";
 import { rememberBehaveRun } from "./behaveRunLastRun";
@@ -42,6 +46,7 @@ async function runBehaveJob(
   token: vscode.CancellationToken,
   sinks: BehaveRunSinks,
   extensionPath: string,
+  liveSessionId: number,
   liveOpts?: { skipLivePanelReset?: boolean }
 ): Promise<void> {
   const featureItem = job.featureItem;
@@ -91,12 +96,14 @@ async function runBehaveJob(
   let exitCode = 0;
 
   function livePanelSinkWrap(message: LivePanelToWebviewMessage): void {
+    if (!isCurrentBehaveLiveSession(liveSessionId)) {
+      return;
+    }
     sinks.livePanel.post(message);
   }
 
   try {
     if (!liveOpts?.skipLivePanelReset) {
-      sinks.livePanel.clear();
       sinks.livePanel.post({
         type: "feature",
         label: featureItem.label
@@ -205,10 +212,16 @@ async function runBehaveJob(
       });
 
       const onStdoutChunk = (chunk: Buffer): void => {
+        if (!isCurrentBehaveLiveSession(liveSessionId)) {
+          return;
+        }
         const text = chunk.toString();
         for (const line of ndjsonBuf.consumeChunk(text)) {
           /* Full stdout mirror (including NDJSON) for the Output channel — debuggable trace; the Live panel stays human-only via structured messages. */
           sinks.output.append(line);
+          if (!isCurrentBehaveLiveSession(liveSessionId)) {
+            return;
+          }
           const ev = parseLiveStreamLine(line);
           if (ev) {
             dispatchLiveStreamEvent(ev, liveDispatchCtx);
@@ -231,16 +244,20 @@ async function runBehaveJob(
         const tail = ndjsonBuf.flushLine();
         if (tail) {
           sinks.output.append(tail);
-          const ev = parseLiveStreamLine(tail);
-          if (ev) {
-            dispatchLiveStreamEvent(ev, liveDispatchCtx);
-          } else {
-            appendPlainStdoutLine(tail);
+          if (isCurrentBehaveLiveSession(liveSessionId)) {
+            const ev = parseLiveStreamLine(tail);
+            if (ev) {
+              dispatchLiveStreamEvent(ev, liveDispatchCtx);
+            } else {
+              appendPlainStdoutLine(tail);
+            }
           }
         }
-        flushPendingHookStdout(liveDispatchCtx, {
-          scenarioKey: hookFlushState.lastScenarioKey
-        });
+        if (isCurrentBehaveLiveSession(liveSessionId)) {
+          flushPendingHookStdout(liveDispatchCtx, {
+            scenarioKey: hookFlushState.lastScenarioKey
+          });
+        }
         resolvePromise();
       });
     });
@@ -255,7 +272,10 @@ async function runBehaveJob(
     sinks.output.append(`Behave Runner error: ${msg}\r\n`);
     void vscode.window.showErrorMessage(`Behave Runner: ${msg}`);
   } finally {
-    if (token.isCancellationRequested) {
+    if (
+      token.isCancellationRequested &&
+      isCurrentBehaveLiveSession(liveSessionId)
+    ) {
       sinks.livePanel.post({ type: "runCancelled" });
     }
   }
@@ -277,6 +297,8 @@ export async function runBehaveJobs(
   rememberBehaveRun("run", jobs);
   const runCts = takeOverActiveRunCancellation();
   const parentReg = token.onCancellationRequested(() => runCts.cancel());
+  const liveSessionId = nextBehaveLiveSessionId();
+  sinks.livePanel.clear();
   try {
     const batchSameFeatureScenarios =
       jobs.length > 1 &&
@@ -287,9 +309,16 @@ export async function runBehaveJobs(
       if (runCts.token.isCancellationRequested) {
         break;
       }
-      await runBehaveJob(jobs[i], runCts.token, sinks, extensionPath, {
-        skipLivePanelReset: batchSameFeatureScenarios && i > 0
-      });
+      await runBehaveJob(
+        jobs[i],
+        runCts.token,
+        sinks,
+        extensionPath,
+        liveSessionId,
+        {
+          skipLivePanelReset: batchSameFeatureScenarios && i > 0
+        }
+      );
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

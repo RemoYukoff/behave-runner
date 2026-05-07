@@ -84,6 +84,10 @@
     .live-toolbar-btn--stop:hover .codicon {
       color: var(--vscode-errorForeground, #e85555);
     }
+    /* Find in console: keep run actions (rerun/stop) grouped on the left. */
+    .live-toolbar-btn--console-find {
+      margin-left: auto;
+    }
     .view-body {
       flex: 1 1 auto;
       min-height: 0;
@@ -190,6 +194,99 @@
         var(--vscode-sideBar-background, #252526)
       );
       border-radius: 2px;
+    }
+    .console-find-bar {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      box-sizing: border-box;
+      border-bottom: 1px solid
+        var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+      background: var(
+        --vscode-editorWidget-background,
+        var(--vscode-panel-background, var(--vscode-sideBar-background, #252526))
+      );
+    }
+    .console-find-bar.console-find-bar--hidden {
+      display: none;
+    }
+    .console-find-input {
+      flex: 1 1 auto;
+      min-width: 48px;
+      box-sizing: border-box;
+      margin: 0;
+      padding: 4px 8px;
+      font-family: var(--vscode-font-family, sans-serif);
+      font-size: 12px;
+      color: var(--vscode-input-foreground);
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+      border-radius: 2px;
+      outline: none;
+    }
+    .console-find-input:focus {
+      border-color: var(--vscode-focusBorder);
+    }
+    .console-find-counts {
+      flex: 0 0 auto;
+      font-size: 11px;
+      color: var(--vscode-descriptionForeground, rgba(204, 204, 204, 0.72));
+      white-space: nowrap;
+    }
+    .console-find-mini {
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+      padding: 2px;
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      min-height: 24px;
+      border: none;
+      border-radius: 2px;
+      background: transparent;
+      color: var(--vscode-icon-foreground, var(--vscode-foreground, #ccc));
+      cursor: pointer;
+      flex-shrink: 0;
+      line-height: 0;
+    }
+    .console-find-mini:hover {
+      background: var(
+        --vscode-toolbar-hoverBackground,
+        rgba(255, 255, 255, 0.06)
+      );
+    }
+    .console-find-mini:focus-visible {
+      outline: 1px solid var(--vscode-focusBorder);
+      outline-offset: -1px;
+    }
+    .console-find-mini .codicon {
+      font-size: 14px;
+    }
+    .console-out mark.console-find-hit {
+      background: color-mix(
+        in srgb,
+        var(--vscode-editor-findMatchHighlightBackground, rgba(243, 192, 64, 0.28))
+          100%,
+        transparent
+      );
+      color: inherit;
+      padding: 0;
+      border-radius: 1px;
+    }
+    .console-out mark.console-find-hit.console-find-hit-current {
+      outline: 1px solid var(--vscode-focusBorder);
+      background: color-mix(
+        in srgb,
+        var(--vscode-editor-findMatchBackground, rgba(234, 92, 0, 0.45)) 100%,
+        transparent
+      );
     }
     .console-out {
       flex: 1 1 auto;
@@ -395,6 +492,15 @@
       >
         <i class="codicon codicon-debug-stop" aria-hidden="true"></i>
       </button>
+      <button
+        type="button"
+        class="live-toolbar-btn live-toolbar-btn--console-find"
+        id="btnConsoleFind"
+        title="Find in console (Ctrl+F or Cmd+F)"
+        aria-label="Find in console"
+      >
+        <i class="codicon codicon-search" aria-hidden="true"></i>
+      </button>
     </header>
     <div class="view-body">
       <div id="emptyPlaceholder" class="empty-placeholder">
@@ -412,6 +518,54 @@
             aria-orientation="vertical"
           ></div>
           <div class="pane-console">
+            <div
+              id="consoleFindBar"
+              class="console-find-bar console-find-bar--hidden"
+              role="search"
+              aria-label="Find in console output"
+            >
+              <input
+                type="text"
+                id="consoleFindInput"
+                class="console-find-input"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="Find in console…"
+                aria-label="Find in console output"
+              />
+              <span
+                id="consoleFindCounts"
+                class="console-find-counts"
+                aria-live="polite"
+              ></span>
+              <button
+                type="button"
+                id="consoleFindPrev"
+                class="console-find-mini"
+                title="Previous match (Shift+Enter)"
+                aria-label="Previous match"
+              >
+                <i class="codicon codicon-arrow-up" aria-hidden="true"></i>
+              </button>
+              <button
+                type="button"
+                id="consoleFindNext"
+                class="console-find-mini"
+                title="Next match (Enter)"
+                aria-label="Next match"
+              >
+                <i class="codicon codicon-arrow-down" aria-hidden="true"></i>
+              </button>
+              <button
+                type="button"
+                id="consoleFindClose"
+                class="console-find-mini"
+                title="Close (Escape)"
+                aria-label="Close find"
+              >
+                <i class="codicon codicon-close" aria-hidden="true"></i>
+              </button>
+            </div>
             <pre class="console-out" id="consoleOut"></pre>
           </div>
         </div>

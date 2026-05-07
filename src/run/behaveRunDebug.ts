@@ -1,15 +1,18 @@
 import * as vscode from "vscode";
+import { resolveBehaveFeatureChildrenIfNeeded } from "../behaveHierarchyModel";
+import { getBehaveRunnerContext } from "../behaveRunnerContext";
 import type { BehaveJob } from "./behaveJobTypes";
 import { getWorkspaceRootForFile } from "./behaveJobTypes";
 import {
   releaseActiveRunCancellation,
   takeOverActiveRunCancellation
 } from "./behaveRunCancellation";
+import { rememberBehaveRun } from "./behaveRunLastRun";
 import {
   buildPythonBehaveDebugLaunch,
   getJustMyCodeForResource
 } from "./behavePythonDebug";
-import { rememberBehaveRun } from "./behaveRunLastRun";
+import { nextBehaveLiveSessionId } from "./behaveRunSession";
 
 export async function runBehaveDebugJobs(
   jobs: BehaveJob[],
@@ -17,6 +20,19 @@ export async function runBehaveDebugJobs(
 ): Promise<void> {
   rememberBehaveRun("debug", jobs);
   const runCts = takeOverActiveRunCancellation();
+  const ctx = getBehaveRunnerContext();
+  if (ctx) {
+    nextBehaveLiveSessionId();
+    ctx.runSinks.livePanel.clear();
+    if (jobs.length > 0) {
+      const j0 = jobs[0];
+      await resolveBehaveFeatureChildrenIfNeeded(j0.featureItem);
+      ctx.runSinks.livePanel.post({
+        type: "feature",
+        label: j0.featureItem.label
+      });
+    }
+  }
   const parentReg = token.onCancellationRequested(() => runCts.cancel());
   try {
     for (const job of jobs) {

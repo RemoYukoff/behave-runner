@@ -15,6 +15,11 @@
     var splitter = document.getElementById("splitter");
     var treeRoot = document.getElementById("treeRoot");
     var consoleOut = document.getElementById("consoleOut");
+    var consoleFindBar = document.getElementById("consoleFindBar");
+    var consoleFindInput = document.getElementById("consoleFindInput");
+    var consoleFindCounts = document.getElementById("consoleFindCounts");
+    var consoleFindUiIndex = -1;
+    var consoleFindMarks = [];
     var featureBody = null;
     var currentScenarioSteps = null;
     var logFeature = [];
@@ -282,9 +287,175 @@
         arr.push({ p: "", e: String(text) });
       }
     }
+    function unwrapConsoleFindMarks() {
+      if (!consoleOut) return;
+      var marks = consoleOut.querySelectorAll("mark.console-find-hit");
+      for (var ui = marks.length - 1; ui >= 0; ui--) {
+        var mk = marks[ui];
+        var par = mk.parentNode;
+        if (!par) continue;
+        while (mk.firstChild) {
+          par.insertBefore(mk.firstChild, mk);
+        }
+        par.removeChild(mk);
+      }
+      consoleOut.normalize();
+    }
+    function escapeRegExpForFind(s) {
+      return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    function highlightMatchesInTextNode(textNode, escapedPattern) {
+      var text = textNode.nodeValue || "";
+      if (!text.length) return;
+      var execRe = new RegExp(escapedPattern, "gi");
+      var last = 0;
+      var chunks = [];
+      var m;
+      while ((m = execRe.exec(text)) !== null) {
+        var st = m.index;
+        var mat = m[0];
+        if (st > last) {
+          chunks.push({ slice: text.slice(last, st), mark: false });
+        }
+        chunks.push({ slice: mat, mark: true });
+        last = st + mat.length;
+        if (mat.length === 0) {
+          execRe.lastIndex++;
+          if (execRe.lastIndex > text.length) break;
+        }
+      }
+      if (!chunks.length) return;
+      if (last < text.length) {
+        chunks.push({ slice: text.slice(last), mark: false });
+      }
+      var frag = document.createDocumentFragment();
+      for (var ci = 0; ci < chunks.length; ci++) {
+        var ch = chunks[ci];
+        if (!ch.slice) continue;
+        if (!ch.mark) {
+          frag.appendChild(document.createTextNode(ch.slice));
+        } else {
+          var mrk = document.createElement("mark");
+          mrk.className = "console-find-hit";
+          mrk.appendChild(document.createTextNode(ch.slice));
+          frag.appendChild(mrk);
+        }
+      }
+      if (!frag.childNodes.length || !textNode.parentNode) return;
+      textNode.parentNode.replaceChild(frag, textNode);
+    }
+    function syncConsoleFindIndex(idx) {
+      if (!consoleFindCounts) return;
+      if (!consoleFindMarks.length) {
+        consoleFindCounts.textContent = "";
+        consoleFindUiIndex = -1;
+        return;
+      }
+      var len = consoleFindMarks.length;
+      var i = idx % len;
+      if (i < 0) i += len;
+      for (var zi = 0; zi < len; zi++) {
+        consoleFindMarks[zi].classList.toggle(
+          "console-find-hit-current",
+          zi === i
+        );
+      }
+      consoleFindUiIndex = i;
+      consoleFindCounts.textContent = String(i + 1) + " of " + String(len);
+      try {
+        consoleFindMarks[i].scrollIntoView({
+          block: "nearest",
+          inline: "nearest"
+        });
+      } catch (_) {
+      }
+    }
+    function findConsoleNextMark() {
+      if (!consoleFindMarks.length) return;
+      syncConsoleFindIndex(consoleFindUiIndex + 1);
+    }
+    function findConsolePrevMark() {
+      if (!consoleFindMarks.length) return;
+      syncConsoleFindIndex(consoleFindUiIndex - 1);
+    }
+    function applyConsoleFindHighlights(rawQuery) {
+      unwrapConsoleFindMarks();
+      consoleFindMarks = [];
+      consoleFindUiIndex = -1;
+      var q = typeof rawQuery === "string" ? rawQuery.trim() : "";
+      if (!consoleFindCounts || !consoleOut) return;
+      if (!consoleOut.childNodes || consoleOut.childNodes.length === 0 || !q.length) {
+        consoleFindCounts.textContent = "";
+        return;
+      }
+      var esc = escapeRegExpForFind(q);
+      var pile = [];
+      var w = document.createTreeWalker(consoleOut, NodeFilter.SHOW_TEXT);
+      var node;
+      while (node = w.nextNode()) {
+        pile.push(node);
+      }
+      for (var pi = pile.length - 1; pi >= 0; pi--) {
+        highlightMatchesInTextNode(pile[pi], esc);
+      }
+      consoleFindMarks = Array.prototype.slice.call(
+        consoleOut.querySelectorAll("mark.console-find-hit"),
+        0
+      );
+      if (!consoleFindMarks.length) {
+        consoleFindCounts.textContent = "No results";
+        return;
+      }
+      syncConsoleFindIndex(0);
+    }
+    function hideConsoleFind(opts) {
+      opts = opts || {};
+      unwrapConsoleFindMarks();
+      consoleFindMarks = [];
+      consoleFindUiIndex = -1;
+      if (consoleFindCounts) consoleFindCounts.textContent = "";
+      if (consoleFindBar) {
+        consoleFindBar.classList.add("console-find-bar--hidden");
+      }
+      if (opts.resetQuery && consoleFindInput instanceof HTMLInputElement) {
+        consoleFindInput.value = "";
+      }
+    }
+    function openConsoleFind() {
+      if (!consoleFindBar || !shell || shell.classList.contains("hidden")) {
+        return;
+      }
+      consoleFindBar.classList.remove("console-find-bar--hidden");
+      applyConsoleFindHighlights(
+        consoleFindInput instanceof HTMLInputElement ? consoleFindInput.value : ""
+      );
+      if (consoleFindInput instanceof HTMLInputElement) {
+        consoleFindInput.focus();
+        consoleFindInput.select();
+      }
+    }
+    function syncConsoleFindAfterRender() {
+      if (!consoleOut) return;
+      var barOpen = !!consoleFindBar && !consoleFindBar.classList.contains("console-find-bar--hidden");
+      unwrapConsoleFindMarks();
+      consoleFindMarks = [];
+      consoleFindUiIndex = -1;
+      if (!barOpen) {
+        if (consoleFindCounts) consoleFindCounts.textContent = "";
+        return;
+      }
+      if (consoleFindCounts) consoleFindCounts.textContent = "";
+      if (consoleFindInput instanceof HTMLInputElement && String(consoleFindInput.value || "").trim().length > 0) {
+        applyConsoleFindHighlights(consoleFindInput.value);
+      }
+    }
+    function isLiveShellVisible() {
+      return !!shell && !shell.classList.contains("hidden") && !!emptyPlaceholder && emptyPlaceholder.classList.contains("hidden");
+    }
     function renderLogSegments(parts) {
       if (!parts || !parts.length) {
-        consoleOut.textContent = "";
+        if (consoleOut) consoleOut.textContent = "";
+        syncConsoleFindAfterRender();
         return;
       }
       var html = "";
@@ -308,16 +479,21 @@
         }
       }
       if (!html.trim()) {
-        consoleOut.textContent = "";
+        if (consoleOut) consoleOut.textContent = "";
+        syncConsoleFindAfterRender();
         return;
       }
-      consoleOut.innerHTML = html;
-      consoleOut.scrollTop = 0;
+      if (consoleOut) {
+        consoleOut.innerHTML = html;
+        consoleOut.scrollTop = 0;
+      }
+      syncConsoleFindAfterRender();
     }
     function showConsolePlain(text) {
       var t = (text || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
       if (!t.trim()) {
-        consoleOut.textContent = "";
+        if (consoleOut) consoleOut.textContent = "";
+        syncConsoleFindAfterRender();
         return;
       }
       renderLogSegments([t]);
@@ -599,7 +775,8 @@
         scenarioDoneStatus = /* @__PURE__ */ Object.create(null);
         scenarioRunningStepCount = /* @__PURE__ */ Object.create(null);
         pendingStepRowByKey = /* @__PURE__ */ Object.create(null);
-        consoleOut.textContent = "";
+        hideConsoleFind({ resetQuery: true });
+        if (consoleOut) consoleOut.textContent = "";
         syncRunLayoutVisibility();
         return;
       }
@@ -789,6 +966,42 @@
       handleLivePanelPayload(e.data);
     });
     syncRunLayoutVisibility();
+    document.addEventListener(
+      "keydown",
+      function(ev) {
+        var k = String(ev.key || "").toLowerCase();
+        var accelFind = (ev.ctrlKey || ev.metaKey) && k === "f" && !ev.shiftKey && !ev.altKey;
+        var barOpen = !!consoleFindBar && !consoleFindBar.classList.contains("console-find-bar--hidden");
+        if (accelFind) {
+          if (barOpen || isLiveShellVisible()) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (barOpen) {
+              hideConsoleFind({ resetQuery: false });
+            } else {
+              openConsoleFind();
+            }
+            return;
+          }
+        }
+        if (barOpen && ev.key === "Escape") {
+          ev.preventDefault();
+          hideConsoleFind({ resetQuery: false });
+          return;
+        }
+        if (barOpen && k === "f3") {
+          ev.preventDefault();
+          if (ev.shiftKey) findConsolePrevMark();
+          else findConsoleNextMark();
+        }
+        if (barOpen && consoleFindInput instanceof HTMLInputElement && ev.key === "Enter" && document.activeElement === consoleFindInput) {
+          ev.preventDefault();
+          if (ev.shiftKey) findConsolePrevMark();
+          else findConsoleNextMark();
+        }
+      },
+      true
+    );
     var btnRerun = document.getElementById("btnRerun");
     if (btnRerun && vscodeApi) {
       btnRerun.addEventListener("click", function() {
@@ -799,6 +1012,34 @@
     if (btnStop && vscodeApi) {
       btnStop.addEventListener("click", function() {
         vscodeApi.postMessage({ type: "stopRun" });
+      });
+    }
+    var btnConsoleFind = document.getElementById("btnConsoleFind");
+    if (btnConsoleFind) {
+      btnConsoleFind.addEventListener("click", function() {
+        if (consoleFindBar && !consoleFindBar.classList.contains("console-find-bar--hidden")) {
+          if (consoleFindInput instanceof HTMLInputElement) {
+            consoleFindInput.focus();
+            consoleFindInput.select();
+          }
+        } else {
+          openConsoleFind();
+        }
+      });
+    }
+    var bFindPrev = document.getElementById("consoleFindPrev");
+    var bFindNext = document.getElementById("consoleFindNext");
+    var bFindClose = document.getElementById("consoleFindClose");
+    if (bFindPrev) bFindPrev.addEventListener("click", findConsolePrevMark);
+    if (bFindNext) bFindNext.addEventListener("click", findConsoleNextMark);
+    if (bFindClose)
+      bFindClose.addEventListener("click", function() {
+        hideConsoleFind({ resetQuery: false });
+      });
+    if (consoleFindInput instanceof HTMLInputElement) {
+      var cfiIn = consoleFindInput;
+      cfiIn.addEventListener("input", function() {
+        applyConsoleFindHighlights(cfiIn.value);
       });
     }
     if (vscodeApi) {
