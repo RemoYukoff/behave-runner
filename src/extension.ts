@@ -7,7 +7,10 @@ import {
   buildPythonBehaveDebugLaunchFromCliArgs,
   getJustMyCodeForResource
 } from "./run/behavePythonDebug";
-import { cancelActiveBehaveRun } from "./run/behaveRunCancellation";
+import {
+  cancelActiveBehaveRun,
+  logBehaveRunCancel
+} from "./run/behaveRunCancellation";
 import { registerBehaveOutputChannel } from "./run/behaveRunOutput";
 import { registerBehaveRunWorkspacePersistence } from "./run/behaveRunLastRun";
 import { rerunLastBehaveRun } from "./run/behaveRunRerun";
@@ -92,6 +95,7 @@ async function activateBehaveRunner(
 
   context.subscriptions.push(
     vscode.commands.registerCommand("behaveRunner.cancelRun", () => {
+      logBehaveRunCancel("command behaveRunner.cancelRun");
       cancelActiveBehaveRun();
     }),
     vscode.commands.registerCommand("behaveRunner.rerunLastRun", () => {

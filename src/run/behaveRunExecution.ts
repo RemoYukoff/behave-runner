@@ -21,6 +21,7 @@ import { getWorkspaceRootForFile, planJobs } from "./behaveJobTypes";
 import {
   cancelActiveBehaveRun,
   forceKillTrackedBehaveSpawn,
+  logBehaveRunCancel,
   registerTrackedBehaveSpawn,
   releaseActiveRunCancellation,
   takeOverActiveRunCancellation,
@@ -218,7 +219,10 @@ async function runBehaveJob(
 
     await new Promise<void>((resolvePromise, rejectPromise) => {
       token.onCancellationRequested(() => {
-        forceKillTrackedBehaveSpawn();
+        logBehaveRunCancel(
+          `runBehaveJob: token.onCancellationRequested liveSessionId=${liveSessionId}`
+        );
+        forceKillTrackedBehaveSpawn("runBehaveJob token");
       });
 
       const onStdoutChunk = (chunk: Buffer): void => {

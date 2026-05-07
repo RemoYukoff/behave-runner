@@ -5,6 +5,7 @@ import type { BehaveJob } from "./behaveJobTypes";
 import { getWorkspaceRootForFile } from "./behaveJobTypes";
 import {
   cancelActiveBehaveRun,
+  logBehaveRunCancel,
   releaseActiveRunCancellation,
   takeOverActiveRunCancellation
 } from "./behaveRunCancellation";
@@ -35,7 +36,12 @@ export async function runBehaveDebugJobs(
       });
     }
   }
-  const parentReg = token.onCancellationRequested(() => runCts.cancel());
+  const parentReg = token.onCancellationRequested(() => {
+    logBehaveRunCancel(
+      "runBehaveDebugJobs: outer token cancelled → runCts.cancel()"
+    );
+    runCts.cancel();
+  });
   try {
     for (const job of jobs) {
       if (runCts.token.isCancellationRequested) {
@@ -76,6 +82,9 @@ export async function runBehaveDebugJobs(
           finish();
         });
         cancelReg = runCts.token.onCancellationRequested(() => {
+          logBehaveRunCancel(
+            "runBehaveDebugJobs: inner token cancelled → vscode.debug.stopDebugging()"
+          );
           void vscode.debug.stopDebugging();
           finish();
         });

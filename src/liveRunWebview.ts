@@ -5,6 +5,7 @@ import {
   setLiveRunPanelGateway,
   type LiveRunPanelGateway
 } from "./behaveRunnerContext";
+import { logBehaveRunCancel } from "./run/behaveRunCancellation";
 import {
   isLivePanelFromWebviewMessage,
   LIVE_PANEL_PROTOCOL_VERSION,
@@ -281,6 +282,9 @@ async function handleLiveRunWebviewMessage(
     return;
   }
   if (msg.type === "stopRun") {
+    logBehaveRunCancel(
+      "Live panel Stop: posting behaveRunner.cancelRun (webview → extension host)"
+    );
     await vscode.commands.executeCommand("behaveRunner.cancelRun");
     return;
   }

@@ -21,6 +21,7 @@
     var consoleFindUiIndex = -1;
     var consoleFindMarks = [];
     var featureBody = null;
+    var featureRunCancelled = false;
     var currentScenarioSteps = null;
     var scenarioStepsBodyByKey = /* @__PURE__ */ Object.create(null);
     var logFeature = [];
@@ -194,7 +195,7 @@
       if (!featureIconEl) return;
       var keys = Object.keys(scenarioIcons);
       if (keys.length === 0) {
-        setRowIcon(featureIconEl, "pending");
+        setRowIcon(featureIconEl, featureRunCancelled ? "skip" : "pending");
         return;
       }
       var anyPendingChild = false;
@@ -784,12 +785,14 @@
         scenarioDoneStatus = /* @__PURE__ */ Object.create(null);
         scenarioRunningStepCount = /* @__PURE__ */ Object.create(null);
         pendingStepRowByKey = /* @__PURE__ */ Object.create(null);
+        featureRunCancelled = false;
         hideConsoleFind({ resetQuery: true });
         if (consoleOut) consoleOut.textContent = "";
         syncRunLayoutVisibility();
         return;
       }
       if (m.type === "feature") {
+        featureRunCancelled = false;
         ensureFeatureBody(m.label);
         refreshFeatureIcon();
         treeRoot.scrollTop = 0;
@@ -869,6 +872,7 @@
         return;
       }
       if (m.type === "runCancelled") {
+        featureRunCancelled = true;
         applyRunCancelledSweep();
         return;
       }

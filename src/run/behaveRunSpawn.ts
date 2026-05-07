@@ -68,6 +68,11 @@ export function spawnBehave(
     cwd,
     env,
     shell: true,
-    windowsHide: true
+    windowsHide: true,
+    /**
+     * Unix: new session + process group so `kill(-pid)` tears down `sh -c … → python`
+     * together. Without this, SIGKILL only hits the shell and Behave keeps running.
+     */
+    ...(process.platform !== "win32" ? { detached: true } : {})
   }) as cp.ChildProcessWithoutNullStreams;
 }

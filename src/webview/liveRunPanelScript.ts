@@ -27,6 +27,8 @@ declare function acquireVsCodeApi(): {
       /** @type {HTMLElement[]} */
       var consoleFindMarks = [];
       var featureBody = null;
+      /** Set when `runCancelled` is received so the feature row does not stay on spinner if no scenario ran yet. */
+      var featureRunCancelled = false;
       var currentScenarioSteps = null;
       /** Maps Live `scenarioKey` to the `.tree-steps` element (do not use `currentScenarioSteps` for routing). */
       var scenarioStepsBodyByKey: Record<string, HTMLElement> = Object.create(null);
@@ -239,7 +241,7 @@ declare function acquireVsCodeApi(): {
         if (!featureIconEl) return;
         var keys = Object.keys(scenarioIcons);
         if (keys.length === 0) {
-          setRowIcon(featureIconEl, "pending");
+          setRowIcon(featureIconEl, featureRunCancelled ? "skip" : "pending");
           return;
         }
         var anyPendingChild = false;
@@ -912,12 +914,14 @@ declare function acquireVsCodeApi(): {
           scenarioDoneStatus = Object.create(null);
           scenarioRunningStepCount = Object.create(null);
           pendingStepRowByKey = Object.create(null);
+          featureRunCancelled = false;
           hideConsoleFind({ resetQuery: true });
           if (consoleOut) consoleOut.textContent = "";
           syncRunLayoutVisibility();
           return;
         }
         if (m.type === "feature") {
+          featureRunCancelled = false;
           ensureFeatureBody(m.label);
           refreshFeatureIcon();
           treeRoot.scrollTop = 0;
@@ -999,6 +1003,7 @@ declare function acquireVsCodeApi(): {
           return;
         }
         if (m.type === "runCancelled") {
+          featureRunCancelled = true;
           applyRunCancelledSweep();
           return;
         }
