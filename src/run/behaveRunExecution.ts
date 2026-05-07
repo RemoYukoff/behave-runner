@@ -19,8 +19,12 @@ import { getPythonInterpreterPath } from "../pythonInterpreter";
 import type { BehaveJob } from "./behaveJobTypes";
 import { getWorkspaceRootForFile, planJobs } from "./behaveJobTypes";
 import {
+  cancelActiveBehaveRun,
+  forceKillTrackedBehaveSpawn,
+  registerTrackedBehaveSpawn,
   releaseActiveRunCancellation,
-  takeOverActiveRunCancellation
+  takeOverActiveRunCancellation,
+  unregisterTrackedBehaveSpawn
 } from "./behaveRunCancellation";
 import {
   isCurrentBehaveLiveSession,
@@ -205,10 +209,16 @@ async function runBehaveJob(
     const proc = spawnBehave(runJob, workspaceRoot, interpreter.path, {
       liveFormatterPythonRoot: liveFormatterRoot
     });
+    registerTrackedBehaveSpawn(proc);
+    const untrackBehaveSpawn = (): void => {
+      unregisterTrackedBehaveSpawn(proc);
+    };
+    proc.once("close", untrackBehaveSpawn);
+    proc.once("error", untrackBehaveSpawn);
 
     await new Promise<void>((resolvePromise, rejectPromise) => {
       token.onCancellationRequested(() => {
-        proc.kill();
+        forceKillTrackedBehaveSpawn();
       });
 
       const onStdoutChunk = (chunk: Buffer): void => {
@@ -285,6 +295,7 @@ export async function runBehaveJobs(
   jobs: BehaveJob[],
   token: vscode.CancellationToken
 ): Promise<void> {
+  cancelActiveBehaveRun();
   const ctx = getBehaveRunnerContext();
   if (!ctx) {
     void vscode.window.showErrorMessage(

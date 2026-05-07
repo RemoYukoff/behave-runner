@@ -4,6 +4,7 @@ import { getBehaveRunnerContext } from "../behaveRunnerContext";
 import type { BehaveJob } from "./behaveJobTypes";
 import { getWorkspaceRootForFile } from "./behaveJobTypes";
 import {
+  cancelActiveBehaveRun,
   releaseActiveRunCancellation,
   takeOverActiveRunCancellation
 } from "./behaveRunCancellation";
@@ -18,6 +19,7 @@ export async function runBehaveDebugJobs(
   jobs: BehaveJob[],
   token: vscode.CancellationToken
 ): Promise<void> {
+  cancelActiveBehaveRun();
   rememberBehaveRun("debug", jobs);
   const runCts = takeOverActiveRunCancellation();
   const ctx = getBehaveRunnerContext();

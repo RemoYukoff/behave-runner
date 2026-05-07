@@ -6,7 +6,6 @@ import {
 import {
   normalizeScenarioName,
   parseBehaveLocation,
-  pathsEqual,
   pathsEqualFs,
   stripOutlineSuffix
 } from "./behaveLiveStreamPaths";
@@ -146,6 +145,32 @@ export function findScenarioItem(
     }
   }
 
+  // Behave expands Scenario Outline placeholders in JSON scenario names; step locations
+  // stay on the template lines. Matching by scenario `location` (Examples row line) is
+  // authoritative when present — do this before label matching.
+  const locEarly = parseBehaveLocation(locationStr);
+  if (locEarly && pathsEqualFs(locEarly.filePath, jobFsPath, workspaceRoot)) {
+    const line0 = locEarly.line1Based - 1;
+    for (const ch of scenChildren) {
+      const rest = ch.id.slice(SCEN_PREFIX.length);
+      const lastColon = rest.lastIndexOf(":");
+      if (lastColon < 0) {
+        continue;
+      }
+      const encPath = rest.slice(0, lastColon);
+      const lineStr = rest.slice(lastColon + 1);
+      const sl = parseInt(lineStr, 10);
+      try {
+        const fp = decodeURIComponent(encPath);
+        if (pathsEqualFs(fp, jobFsPath, workspaceRoot) && sl === line0) {
+          return ch;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   const nameMatches = scenChildren.filter(
     (ch) => normalizeScenarioName(ch.label) === normEl
   );
@@ -161,26 +186,6 @@ export function findScenarioItem(
     );
     if (pick) {
       return pick;
-    }
-  }
-
-  const loc = parseBehaveLocation(locationStr);
-  if (loc && pathsEqualFs(loc.filePath, jobFsPath, workspaceRoot)) {
-    const line0 = loc.line1Based - 1;
-    for (const ch of scenChildren) {
-      const rest = ch.id.slice(SCEN_PREFIX.length);
-      const lastColon = rest.lastIndexOf(":");
-      const encPath = rest.slice(0, lastColon);
-      const lineStr = rest.slice(lastColon + 1);
-      const sl = parseInt(lineStr, 10);
-      try {
-        const fp = decodeURIComponent(encPath);
-        if (pathsEqual(fp, jobFsPath) && sl === line0) {
-          return ch;
-        }
-      } catch {
-        /* ignore */
-      }
     }
   }
 
@@ -202,5 +207,6 @@ export function findScenarioItem(
       return pick;
     }
   }
+
   return undefined;
 }

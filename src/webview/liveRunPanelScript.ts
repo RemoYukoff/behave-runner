@@ -28,6 +28,8 @@ declare function acquireVsCodeApi(): {
       var consoleFindMarks = [];
       var featureBody = null;
       var currentScenarioSteps = null;
+      /** Maps Live `scenarioKey` to the `.tree-steps` element (do not use `currentScenarioSteps` for routing). */
+      var scenarioStepsBodyByKey: Record<string, HTMLElement> = Object.create(null);
       var logFeature = [];
       var logByScenario = Object.create(null);
       var logByStep = Object.create(null);
@@ -773,39 +775,45 @@ declare function acquireVsCodeApi(): {
         });
       }
 
-      /** Ensure the steps container for this scenario exists (mirrors orphan creation in step handler). */
+      /** Ensure the steps container for this `scenarioKey` exists (host may send steps before a `scenario` row in edge cases). */
       function ensureStepListParentForScenario(sk, scenarioLabel) {
-        var parent = currentScenarioSteps;
-        if (!parent) {
-          if (!featureBody) ensureFeatureBody("(feature)");
-          var orphan = document.createElement("details");
-          orphan.className = "tree-node tree-scenario";
-          orphan.open = false;
-          var orow = makeSummaryRow(scenarioLabel || "(scenario)");
-          applyTreeRowBleed(orow.sum, 1);
-          var ob = document.createElement("div");
-          ob.className = "tree-children tree-steps";
-          orphan.appendChild(orow.sum);
-          orphan.appendChild(ob);
-          featureBody.appendChild(orphan);
-          parent = ob;
-          currentScenarioSteps = ob;
+        if (sk && scenarioStepsBodyByKey[sk]) {
+          return scenarioStepsBodyByKey[sk];
+        }
+        if (!featureBody) ensureFeatureBody("(feature)");
+        var orphan = document.createElement("details");
+        orphan.className = "tree-node tree-scenario";
+        orphan.open = false;
+        var orow = makeSummaryRow(scenarioLabel || "(scenario)");
+        applyTreeRowBleed(orow.sum, 1);
+        var ob = document.createElement("div");
+        ob.className = "tree-children tree-steps";
+        orphan.appendChild(orow.sum);
+        orphan.appendChild(ob);
+        featureBody.appendChild(orphan);
+        if (sk) {
+          scenarioStepsBodyByKey[sk] = ob;
+        }
+        currentScenarioSteps = ob;
+        if (sk) {
           scenarioIcons[sk] = orow.icon;
           if (scenarioFailed[sk] === undefined) scenarioFailed[sk] = false;
           if (scenarioSkipped[sk] === undefined) scenarioSkipped[sk] = false;
           if (scenarioDone[sk] === undefined) scenarioDone[sk] = false;
           if (scenarioDoneStatus[sk] === undefined) scenarioDoneStatus[sk] = "";
           if (scenarioRunningStepCount[sk] === undefined) scenarioRunningStepCount[sk] = 0;
-          orow.sum.dataset.logScope = "scenario";
-          orow.sum.dataset.scenarioKey = sk;
-          wireExpandableDetails(orphan, orow.sum, function () {
-            setSelected(orow.sum);
-            renderLogSegments(logByScenario[sk] || []);
-          });
+        }
+        orow.sum.dataset.logScope = "scenario";
+        orow.sum.dataset.scenarioKey = sk || "";
+        wireExpandableDetails(orphan, orow.sum, function () {
+          setSelected(orow.sum);
+          renderLogSegments(logByScenario[sk] || []);
+        });
+        if (sk) {
           refreshScenarioIcon(sk);
           refreshFeatureIcon();
         }
-        return parent;
+        return ob;
       }
 
       function makeSummaryRow(labelText) {
@@ -841,6 +849,7 @@ declare function acquireVsCodeApi(): {
         treeRoot.appendChild(details);
         featureBody = body;
         currentScenarioSteps = null;
+        scenarioStepsBodyByKey = Object.create(null);
         row.sum.dataset.logScope = "feature";
         wireExpandableDetails(details, row.sum, function () {
           setSelected(row.sum);
@@ -894,6 +903,7 @@ declare function acquireVsCodeApi(): {
           stepErrorByKey = Object.create(null);
           selectedEl = null;
           anonStepSeq = 0;
+          scenarioStepsBodyByKey = Object.create(null);
           featureIconEl = null;
           scenarioIcons = Object.create(null);
           scenarioFailed = Object.create(null);
@@ -918,7 +928,33 @@ declare function acquireVsCodeApi(): {
           var logLine = m.logLine || ("━━ " + (m.name || "(scenario)") + " ━━\n");
           bumpFeature(logLine);
           var sk = m.key;
-          if (sk) bumpScenario(sk, logLine);
+          var selectKey = sk || "__scenario_nokey__";
+          bumpScenario(selectKey, logLine);
+
+          var existingBody = scenarioStepsBodyByKey[selectKey];
+          if (existingBody) {
+            currentScenarioSteps = existingBody;
+            var existingDet = existingBody.parentElement;
+            var mergeSum = null;
+            if (existingDet && existingDet.classList.contains("tree-scenario")) {
+              mergeSum = existingDet.querySelector(":scope > summary");
+              if (mergeSum) {
+                var elab = mergeSum.querySelector(".tree-row-label");
+                var scenName = m.name || "(scenario)";
+                if (elab) elab.textContent = scenName;
+                setRowTooltip(mergeSum, scenName);
+                mergeSum.dataset.logScope = "scenario";
+                mergeSum.dataset.scenarioKey = selectKey;
+                var mergeIcon = mergeSum.querySelector(".tree-row-icon");
+                if (mergeIcon) scenarioIcons[selectKey] = mergeIcon;
+              }
+            }
+            refreshScenarioIcon(selectKey);
+            refreshFeatureIcon();
+            setSelected(mergeSum);
+            refreshConsoleIfLiveStepAppend();
+            return;
+          }
 
           var sdet = document.createElement("details");
           sdet.className = "tree-node tree-scenario";
@@ -931,8 +967,7 @@ declare function acquireVsCodeApi(): {
           sdet.appendChild(sbody);
           featureBody.appendChild(sdet);
           currentScenarioSteps = sbody;
-          var selectKey = sk || "__scenario_nokey__";
-          if (!sk) bumpScenario(selectKey, logLine);
+          scenarioStepsBodyByKey[selectKey] = sbody;
           scenarioIcons[selectKey] = srow.icon;
           scenarioFailed[selectKey] = false;
           scenarioSkipped[selectKey] = false;

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { BehaveHierarchyNode } from "./behaveHierarchyModel";
+import { BG_PREFIX, type BehaveHierarchyNode } from "./behaveHierarchyModel";
 import {
   countScenariosWithStrippedOutlineName,
   findBgItem,
@@ -41,6 +41,45 @@ function locationForBehaveStep(
   );
 }
 
+/**
+ * Stable Live panel scenario id: hierarchy node when matched, else Behave `location`
+ * (outline example row), else fingerprint of the Behave `scenario` string.
+ * Never rely on label-only matching for outlines — Behave substitutes placeholders.
+ */
+function resolveLivePanelScenarioBinding(
+  featureItem: BehaveHierarchyNode,
+  job: LiveStreamJob,
+  scenarioName: string | undefined,
+  locationStr: string | undefined,
+  fsPath: string,
+  workspaceRoot: string
+): { key: string; scenarioItem?: BehaveHierarchyNode } | undefined {
+  const scenarioItem = resolveScenarioItem(
+    featureItem,
+    job,
+    scenarioName,
+    locationStr,
+    fsPath,
+    workspaceRoot
+  );
+  if (scenarioItem) {
+    return { key: scenarioItem.id, scenarioItem };
+  }
+  const loc = parseBehaveLocation(locationStr);
+  if (loc && pathsEqualFs(loc.filePath, fsPath, workspaceRoot)) {
+    return {
+      key: `behavelive:scen:${encodeURIComponent(fsPath)}:${loc.line1Based}`
+    };
+  }
+  const sn = scenarioName?.trim();
+  if (sn) {
+    return {
+      key: `behavelive:name:${encodeURIComponent(fsPath)}:${encodeURIComponent(sn)}`
+    };
+  }
+  return undefined;
+}
+
 function resolveScenarioItem(
   featureItem: BehaveHierarchyNode,
   job: LiveStreamJob,
@@ -62,6 +101,16 @@ function resolveScenarioItem(
         : undefined;
     }
     const ev = scenarioName;
+    const found = findScenarioItem(
+      featureItem,
+      ev,
+      locationStr,
+      fsPath,
+      workspaceRoot
+    );
+    if (found) {
+      return found;
+    }
     if (normalizeScenarioName(target.label) === normalizeScenarioName(ev)) {
       return target;
     }
@@ -76,14 +125,7 @@ function resolveScenarioItem(
     ) {
       return target;
     }
-    const found = findScenarioItem(
-      featureItem,
-      ev,
-      locationStr,
-      fsPath,
-      workspaceRoot
-    );
-    return found?.id === target.id ? target : undefined;
+    return undefined;
   }
   if (!scenarioName) {
     return undefined;
@@ -110,6 +152,7 @@ function resolveStepDispatchBase(
     job: LiveStreamJob;
     fsPath: string;
     workspaceRoot: string;
+    hookFlushState?: LiveRunHookFlushState;
   },
   event: StepStreamFields,
   uri: vscode.Uri
@@ -155,19 +198,29 @@ function resolveStepDispatchBase(
     }
   }
 
+  const stepParentId = stepItem?.parent?.id;
+  const stepUnderBackground = !!stepParentId?.startsWith(BG_PREFIX);
+
   const outputAnchor =
     scenarioItem ??
-    (stepItem?.parent?.id.startsWith("behave:bg:") ? bgItem : undefined) ??
+    (stepUnderBackground ? bgItem : undefined) ??
     bgItem ??
     ctx.featureItem;
 
   const kw = event.keyword ?? "";
   const stepText = event.step ?? "";
-  const scenarioKeyForStep =
-    stepItem?.parent?.id ?? scenarioItem?.id ?? "__orphan__";
+  /** Background steps resolve under `bgItem`; Live panel rows are per scenario — key off the active scenario, not `behave:bg:`. */
+  const scenarioKeyForStep = stepUnderBackground
+    ? scenarioItem?.id ??
+      ctx.hookFlushState?.lastScenarioKey ??
+      "__orphan__"
+    : stepParentId ??
+      scenarioItem?.id ??
+      ctx.hookFlushState?.lastScenarioKey ??
+      "__orphan__";
   const stepKey =
     stepItem?.id ??
-    `anon:${ctx.fsPath}:${encodeURIComponent(
+    `anon:${scenarioKeyForStep}:${ctx.fsPath}:${encodeURIComponent(
       event.scenario ?? ""
     )}:${event.location ?? ""}:${kw}:${stepText}`;
   const locVs = locationForBehaveStep(
@@ -256,7 +309,7 @@ export function dispatchLiveStreamEvent(
   const uri = ctx.featureItem.uri;
 
   if (event.event === "scenario_started") {
-    const scenarioItem = resolveScenarioItem(
+    const binding = resolveLivePanelScenarioBinding(
       ctx.featureItem,
       ctx.job,
       event.scenario,
@@ -265,21 +318,21 @@ export function dispatchLiveStreamEvent(
       ctx.workspaceRoot
     );
     flushPendingHookStdout(ctx, {
-      scenarioKey: scenarioItem?.id
+      scenarioKey: binding?.key
     });
-    if (!scenarioItem) {
+    if (!binding) {
       return;
     }
     if (ctx.hookFlushState) {
-      ctx.hookFlushState.lastScenarioKey = scenarioItem.id;
+      ctx.hookFlushState.lastScenarioKey = binding.key;
     }
     const label = event.scenario ?? "(scenario)";
-    ctx.appendOutput(`━━ ${label} ━━\r\n`, scenarioItem);
+    ctx.appendOutput(`━━ ${label} ━━\r\n`, binding.scenarioItem);
     const logLine = `━━ ${label} ━━\n`;
     ctx.livePanelSink?.({
       type: "scenario",
       name: label,
-      key: scenarioItem.id,
+      key: binding.key,
       logLine
     });
     return;
@@ -304,7 +357,7 @@ export function dispatchLiveStreamEvent(
   }
 
   if (event.event === "scenario_finished") {
-    const scenarioItem = resolveScenarioItem(
+    const binding = resolveLivePanelScenarioBinding(
       ctx.featureItem,
       ctx.job,
       event.scenario,
@@ -312,12 +365,12 @@ export function dispatchLiveStreamEvent(
       ctx.fsPath,
       ctx.workspaceRoot
     );
-    if (!scenarioItem) {
+    if (!binding) {
       return;
     }
     ctx.livePanelSink?.({
       type: "scenario_finished",
-      key: scenarioItem.id,
+      key: binding.key,
       status: event.status
     });
     return;
