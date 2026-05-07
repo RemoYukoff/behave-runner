@@ -25,6 +25,7 @@ import {
 import type { BehaveRunSinks } from "./behaveRunPorts";
 import { runBehaveDebugJobs } from "./behaveRunDebug";
 import { rememberBehaveRun } from "./behaveRunLastRun";
+import { normalizeToCrlfChunk } from "../text/normalizeCrlf";
 import { liveFormatterBundlePath, spawnBehave } from "./behaveRunSpawn";
 
 function appendOutputForNode(
@@ -113,7 +114,55 @@ async function runBehaveJob(
 
     const ndjsonBuf = new NdjsonStdoutBuffer();
     let pendingPlainStdout = "";
+    /** Bytes of pendingPlainStdout already posted as step_log_append for the active step. */
+    let plainBytesSentToPanelForStep = 0;
+    /** Set after NDJSON step_started until step_finished consumes pending plain. */
+    let activeLiveStepKeys:
+      | { scenarioKey: string; stepKey: string }
+      | undefined;
     const hookFlushState: { lastScenarioKey?: string } = {};
+
+    function appendPlainStdoutLine(rawLineComplete: string): void {
+      if (activeLiveStepKeys) {
+        pendingPlainStdout += rawLineComplete + "\n";
+        const lf = rawLineComplete.replace(/\r\n/g, "\n") + "\n";
+        livePanelSinkWrap({
+          type: "step_log_append",
+          scenarioKey: activeLiveStepKeys.scenarioKey,
+          stepKey: activeLiveStepKeys.stepKey,
+          text: normalizeToCrlfChunk(lf)
+        });
+        plainBytesSentToPanelForStep = pendingPlainStdout.length;
+        return;
+      }
+      /* Before the first scenario_started NDJSON, stream plain lines immediately (Behave / env startup). */
+      if (hookFlushState.lastScenarioKey === undefined) {
+        const lf = rawLineComplete.replace(/\r\n/g, "\n") + "\n";
+        livePanelSinkWrap({
+          type: "hook_stdout",
+          text: normalizeToCrlfChunk(lf)
+        });
+        return;
+      }
+      pendingPlainStdout += rawLineComplete + "\n";
+    }
+
+    function takePendingStdoutForHooks(): string {
+      const s = pendingPlainStdout;
+      pendingPlainStdout = "";
+      plainBytesSentToPanelForStep = 0;
+      activeLiveStepKeys = undefined;
+      return s;
+    }
+
+    function takePendingStdoutUnsentForStepFinish(): string {
+      const full = pendingPlainStdout;
+      const unsent = full.slice(plainBytesSentToPanelForStep);
+      pendingPlainStdout = "";
+      plainBytesSentToPanelForStep = 0;
+      activeLiveStepKeys = undefined;
+      return unsent;
+    }
 
     const liveDispatchCtx = {
       featureItem,
@@ -122,10 +171,26 @@ async function runBehaveJob(
       workspaceRoot,
       appendOutput: appendOut,
       livePanelSink: livePanelSinkWrap,
-      consumePendingStdout: (): string => {
-        const s = pendingPlainStdout;
-        pendingPlainStdout = "";
-        return s;
+      takePendingStdoutForHooks,
+      takePendingStdoutUnsentForStepFinish,
+      notifyLiveStepStarted: (keys: {
+        scenarioKey: string;
+        stepKey: string;
+      }) => {
+        activeLiveStepKeys = keys;
+        if (pendingPlainStdout.length === 0) {
+          plainBytesSentToPanelForStep = 0;
+          return;
+        }
+        const t = pendingPlainStdout.replace(/\r\n/g, "\n");
+        const chunk = t.endsWith("\n") ? t : `${t}\n`;
+        livePanelSinkWrap({
+          type: "step_log_append",
+          scenarioKey: keys.scenarioKey,
+          stepKey: keys.stepKey,
+          text: normalizeToCrlfChunk(chunk)
+        });
+        plainBytesSentToPanelForStep = pendingPlainStdout.length;
       },
       hookFlushState
     };
@@ -148,7 +213,7 @@ async function runBehaveJob(
           if (ev) {
             dispatchLiveStreamEvent(ev, liveDispatchCtx);
           } else {
-            pendingPlainStdout += line + "\n";
+            appendPlainStdoutLine(line);
           }
         }
       };
@@ -170,7 +235,7 @@ async function runBehaveJob(
           if (ev) {
             dispatchLiveStreamEvent(ev, liveDispatchCtx);
           } else {
-            pendingPlainStdout += tail + "\n";
+            appendPlainStdoutLine(tail);
           }
         }
         flushPendingHookStdout(liveDispatchCtx, {

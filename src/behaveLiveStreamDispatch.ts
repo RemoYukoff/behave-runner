@@ -207,7 +207,7 @@ export type LiveRunHookFlushState = {
 
 type HookFlushCtx = {
   livePanelSink?: LiveStreamSink;
-  consumePendingStdout?: () => string;
+  takePendingStdoutForHooks?: () => string;
 };
 
 /** Flush stdout captured between NDJSON events (hooks, prints) into the live panel. */
@@ -215,7 +215,7 @@ export function flushPendingHookStdout(
   ctx: HookFlushCtx,
   opts?: { scenarioKey?: string }
 ): void {
-  const raw = ctx.consumePendingStdout?.() ?? "";
+  const raw = ctx.takePendingStdoutForHooks?.() ?? "";
   if (!raw.trim()) {
     return;
   }
@@ -241,8 +241,15 @@ export function dispatchLiveStreamEvent(
       location?: vscode.Location
     ) => void;
     livePanelSink?: LiveStreamSink;
-    /** Plain stdout lines before the next NDJSON step_finished (mirrored already to the Output channel); consumed for the live panel / structured Test Results lines. */
-    consumePendingStdout?: () => string;
+    /** Plain stdout mirrored to Output; flushed for hooks via takePendingStdoutForHooks. */
+    takePendingStdoutForHooks?: () => string;
+    /** Returns plain stdout not yet streamed via step_log_append; clears pending for the completed step. */
+    takePendingStdoutUnsentForStepFinish?: () => string;
+    /** After step_started is posted, attaches buffered stdout to the active step row (incremental streaming). */
+    notifyLiveStepStarted?: (keys: {
+      scenarioKey: string;
+      stepKey: string;
+    }) => void;
     hookFlushState?: LiveRunHookFlushState;
   }
 ): void {
@@ -289,6 +296,10 @@ export function dispatchLiveStreamEvent(
       text: b.stepText,
       ...stepGotoPayload(b.locVs)
     });
+    ctx.notifyLiveStepStarted?.({
+      scenarioKey: b.scenarioKeyForStep,
+      stepKey: b.stepKey
+    });
     return;
   }
 
@@ -332,7 +343,7 @@ export function dispatchLiveStreamEvent(
   const statusForTree = rawStatus === "undefined" ? "failed" : rawStatus;
   const statusForLog = statusLabelForLog(rawStatus);
 
-  const stdoutBuf = ctx.consumePendingStdout?.() ?? "";
+  const stdoutBuf = ctx.takePendingStdoutUnsentForStepFinish?.() ?? "";
   const stdoutPrefix =
     stdoutBuf.trim().length > 0
       ? stdoutBuf + (stdoutBuf.endsWith("\n") ? "" : "\n")

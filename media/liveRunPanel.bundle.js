@@ -551,6 +551,8 @@
         setSelected(row.sum);
         renderLogSegments(logFeature);
       });
+      setSelected(row.sum);
+      renderLogSegments(logFeature);
       syncRunLayoutVisibility();
     }
     function handleLivePanelPayload(m) {
@@ -640,6 +642,8 @@
           setSelected(srow.sum);
           renderLogSegments(logByScenario[selectKey] || []);
         });
+        setSelected(srow.sum);
+        refreshConsoleIfLiveStepAppend();
         return;
       }
       if (m.type === "scenario_finished") {
@@ -672,10 +676,9 @@
         var ask = m.scenarioKey;
         var atext = m.text;
         if (!apk || atext == null || atext === "") return;
-        appendLastSegmentErr(logFeature, atext);
-        if (ask) appendLastSegmentErr(logByScenario[ask], atext);
+        bumpFeature(atext);
+        if (ask) bumpScenario(ask, atext);
         bumpStep(apk, atext);
-        stepErrorByKey[apk] = (stepErrorByKey[apk] || "") + atext;
         refreshConsoleIfLiveStepAppend();
         return;
       }
@@ -779,6 +782,7 @@
         refreshScenarioIcon(sk);
         refreshFeatureIcon();
         scrollTreeRootToBottomIfWasFollowing(followTreeTailStep);
+        refreshConsoleIfLiveStepAppend();
       }
     }
     window.addEventListener("message", function(e) {
