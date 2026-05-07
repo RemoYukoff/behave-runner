@@ -91,6 +91,36 @@ function pushTagsLine(line: string, lineIndex: number, out: FeatureSemanticToken
   }
 }
 
+/** Scenario outline `<name>` and Behave-style `{name}` / `{name:type}` in step or table cells. */
+const OUTLINE_PLACEHOLDER_RE = /<[^>]+>/g;
+const CURLY_PLACEHOLDER_RE = /\{[^{}]+\}/g;
+
+function collectPlaceholderRanges(segment: string): { start: number; end: number }[] {
+  const raw: { start: number; end: number }[] = [];
+  let m: RegExpExecArray | null;
+  OUTLINE_PLACEHOLDER_RE.lastIndex = 0;
+  while ((m = OUTLINE_PLACEHOLDER_RE.exec(segment)) !== null) {
+    raw.push({ start: m.index, end: m.index + m[0].length });
+  }
+  CURLY_PLACEHOLDER_RE.lastIndex = 0;
+  while ((m = CURLY_PLACEHOLDER_RE.exec(segment)) !== null) {
+    raw.push({ start: m.index, end: m.index + m[0].length });
+  }
+  raw.sort((a, b) =>
+    a.start !== b.start ? a.start - b.start : b.end - a.end
+  );
+  const picked: { start: number; end: number }[] = [];
+  let coverUntil = -1;
+  for (const r of raw) {
+    if (r.start < coverUntil) {
+      continue;
+    }
+    picked.push(r);
+    coverUntil = r.end;
+  }
+  return picked;
+}
+
 /** Split [from, from+sliceLen) into gap + placeholder spans (non-overlapping). */
 function pushSliceWithPlaceholders(
   line: string,
@@ -104,25 +134,24 @@ function pushSliceWithPlaceholders(
     return;
   }
   const segment = line.slice(from, from + sliceLen);
-  const re = /<[^>]+>/g;
+  const matches = collectPlaceholderRanges(segment);
   let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(segment)) !== null) {
-    if (m.index > last) {
+  for (const r of matches) {
+    if (r.start > last) {
       out.push({
         line: lineIndex,
         start: from + last,
-        length: m.index - last,
+        length: r.start - last,
         kind: gapKind,
       });
     }
     out.push({
       line: lineIndex,
-      start: from + m.index,
-      length: m[0].length,
+      start: from + r.start,
+      length: r.end - r.start,
       kind: "placeholder",
     });
-    last = m.index + m[0].length;
+    last = r.end;
   }
   if (last < segment.length) {
     out.push({
