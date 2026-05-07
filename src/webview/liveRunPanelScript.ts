@@ -29,6 +29,12 @@ declare function acquireVsCodeApi(): {
       var featureBody = null;
       /** Set when `runCancelled` is received so the feature row does not stay on spinner if no scenario ran yet. */
       var featureRunCancelled = false;
+      /**
+       * When true, each incoming `scenario` row selects itself so the console follows the run.
+       * Any explicit tree click (feature / scenario / step) sets this false so a failing scenario
+       * stays selected until the next run (`feature` / `clear`).
+       */
+      var liveFollowSelection = true;
       var currentScenarioSteps = null;
       /** Maps Live `scenarioKey` to the `.tree-steps` element (do not use `currentScenarioSteps` for routing). */
       var scenarioStepsBodyByKey: Record<string, HTMLElement> = Object.create(null);
@@ -71,6 +77,10 @@ declare function acquireVsCodeApi(): {
         var raw = ancestorTreeChildDepth * TREE_CHILD_INDENT_PX - reduce;
         var px = (raw > 0 ? raw : 0) + "px";
         el.style.setProperty("--tree-bleed-left", px);
+      }
+
+      function noteUserPinnedTreeSelection() {
+        liveFollowSelection = false;
       }
 
       function syncRunLayoutVisibility() {
@@ -544,7 +554,11 @@ declare function acquireVsCodeApi(): {
         );
       }
 
-      function renderLogSegments(parts) {
+      /**
+       * @param followTailIfNearBottom When true (live updates): scroll to bottom if the user was already
+       *   near the end; if they scrolled up, keep approximate position via distance-from-bottom.
+       */
+      function renderLogSegments(parts, followTailIfNearBottom?: boolean) {
         if (!parts || !parts.length) {
           if (consoleOut) consoleOut.textContent = "";
           syncConsoleFindAfterRender();
@@ -576,10 +590,37 @@ declare function acquireVsCodeApi(): {
           return;
         }
         if (consoleOut) {
+          var follow = !!followTailIfNearBottom;
+          var distFromBottom = 0;
+          var preservePin = false;
+          if (follow) {
+            var maxScrollBefore = consoleOut.scrollHeight - consoleOut.clientHeight;
+            var nearBottom =
+              maxScrollBefore <= 0 ||
+              consoleOut.scrollTop >= maxScrollBefore - TREE_SCROLL_BOTTOM_EPS_PX;
+            if (!nearBottom && maxScrollBefore > 0) {
+              preservePin = true;
+              distFromBottom =
+                consoleOut.scrollHeight -
+                consoleOut.scrollTop -
+                consoleOut.clientHeight;
+            }
+          }
           consoleOut.innerHTML = html;
-          consoleOut.scrollTop = 0;
+          syncConsoleFindAfterRender();
+          if (follow) {
+            if (preservePin) {
+              var nh = consoleOut.scrollHeight - consoleOut.clientHeight;
+              consoleOut.scrollTop = Math.max(0, nh - distFromBottom);
+            } else {
+              consoleOut.scrollTop = consoleOut.scrollHeight;
+            }
+          } else {
+            consoleOut.scrollTop = 0;
+          }
+        } else {
+          syncConsoleFindAfterRender();
         }
-        syncConsoleFindAfterRender();
       }
 
       function showConsolePlain(text) {
@@ -592,7 +633,7 @@ declare function acquireVsCodeApi(): {
         renderLogSegments([t]);
       }
 
-      function showStepConsole(stepKey) {
+      function showStepConsole(stepKey, followTailIfNearBottom?: boolean) {
         var head = stepHeadlineByKey[stepKey];
         var err = (stepErrorByKey[stepKey] || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
         var joined = (logByStep[stepKey] || []).join("");
@@ -604,29 +645,29 @@ declare function acquireVsCodeApi(): {
           head = String(head).replace(/^\n+/, "");
         }
         if (!err.trim()) {
-          renderLogSegments([joined || head]);
+          renderLogSegments([joined || head], followTailIfNearBottom);
           return;
         }
         if (!head) {
-          renderLogSegments([joined]);
+          renderLogSegments([joined], followTailIfNearBottom);
           return;
         }
-        renderLogSegments([{ p: head, e: err }]);
+        renderLogSegments([{ p: head, e: err }], followTailIfNearBottom);
       }
 
       function refreshConsoleIfLiveStepAppend() {
         if (!selectedEl || !selectedEl.dataset) return;
         var ds = selectedEl.dataset;
         if (ds.logScope === "feature") {
-          renderLogSegments(logFeature);
+          renderLogSegments(logFeature, true);
         } else if (ds.logScope === "scenario" && ds.scenarioKey) {
-          renderLogSegments(logByScenario[ds.scenarioKey] || []);
+          renderLogSegments(logByScenario[ds.scenarioKey] || [], true);
         } else if (
           selectedEl.classList &&
           selectedEl.classList.contains("tree-step") &&
           ds.stepKey
         ) {
-          showStepConsole(ds.stepKey);
+          showStepConsole(ds.stepKey, true);
         }
       }
 
@@ -757,6 +798,7 @@ declare function acquireVsCodeApi(): {
         line.dataset.stepBound = "1";
         line.addEventListener("click", function (ev) {
           ev.stopPropagation();
+          noteUserPinnedTreeSelection();
           setSelected(line);
           showStepConsole(stepKey);
         });
@@ -808,6 +850,7 @@ declare function acquireVsCodeApi(): {
         orow.sum.dataset.logScope = "scenario";
         orow.sum.dataset.scenarioKey = sk || "";
         wireExpandableDetails(orphan, orow.sum, function () {
+          noteUserPinnedTreeSelection();
           setSelected(orow.sum);
           renderLogSegments(logByScenario[sk] || []);
         });
@@ -854,6 +897,7 @@ declare function acquireVsCodeApi(): {
         scenarioStepsBodyByKey = Object.create(null);
         row.sum.dataset.logScope = "feature";
         wireExpandableDetails(details, row.sum, function () {
+          noteUserPinnedTreeSelection();
           setSelected(row.sum);
           renderLogSegments(logFeature);
         });
@@ -915,6 +959,7 @@ declare function acquireVsCodeApi(): {
           scenarioRunningStepCount = Object.create(null);
           pendingStepRowByKey = Object.create(null);
           featureRunCancelled = false;
+          liveFollowSelection = true;
           hideConsoleFind({ resetQuery: true });
           if (consoleOut) consoleOut.textContent = "";
           syncRunLayoutVisibility();
@@ -922,6 +967,7 @@ declare function acquireVsCodeApi(): {
         }
         if (m.type === "feature") {
           featureRunCancelled = false;
+          liveFollowSelection = true;
           ensureFeatureBody(m.label);
           refreshFeatureIcon();
           treeRoot.scrollTop = 0;
@@ -955,7 +1001,9 @@ declare function acquireVsCodeApi(): {
             }
             refreshScenarioIcon(selectKey);
             refreshFeatureIcon();
-            setSelected(mergeSum);
+            if (liveFollowSelection && mergeSum) {
+              setSelected(mergeSum);
+            }
             refreshConsoleIfLiveStepAppend();
             return;
           }
@@ -983,10 +1031,13 @@ declare function acquireVsCodeApi(): {
           srow.sum.dataset.logScope = "scenario";
           srow.sum.dataset.scenarioKey = selectKey;
           wireExpandableDetails(sdet, srow.sum, function () {
+            noteUserPinnedTreeSelection();
             setSelected(srow.sum);
             renderLogSegments(logByScenario[selectKey] || []);
           });
-          setSelected(srow.sum);
+          if (liveFollowSelection) {
+            setSelected(srow.sum);
+          }
           refreshConsoleIfLiveStepAppend();
           return;
         }

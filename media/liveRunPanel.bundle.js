@@ -22,6 +22,7 @@
     var consoleFindMarks = [];
     var featureBody = null;
     var featureRunCancelled = false;
+    var liveFollowSelection = true;
     var currentScenarioSteps = null;
     var scenarioStepsBodyByKey = /* @__PURE__ */ Object.create(null);
     var logFeature = [];
@@ -54,6 +55,9 @@
       var raw = ancestorTreeChildDepth * TREE_CHILD_INDENT_PX - reduce;
       var px = (raw > 0 ? raw : 0) + "px";
       el.style.setProperty("--tree-bleed-left", px);
+    }
+    function noteUserPinnedTreeSelection() {
+      liveFollowSelection = false;
     }
     function syncRunLayoutVisibility() {
       var hasTree = treeRoot && treeRoot.childElementCount > 0;
@@ -454,7 +458,7 @@
     function isLiveShellVisible() {
       return !!shell && !shell.classList.contains("hidden") && !!emptyPlaceholder && emptyPlaceholder.classList.contains("hidden");
     }
-    function renderLogSegments(parts) {
+    function renderLogSegments(parts, followTailIfNearBottom) {
       if (!parts || !parts.length) {
         if (consoleOut) consoleOut.textContent = "";
         syncConsoleFindAfterRender();
@@ -486,10 +490,32 @@
         return;
       }
       if (consoleOut) {
+        var follow = !!followTailIfNearBottom;
+        var distFromBottom = 0;
+        var preservePin = false;
+        if (follow) {
+          var maxScrollBefore = consoleOut.scrollHeight - consoleOut.clientHeight;
+          var nearBottom = maxScrollBefore <= 0 || consoleOut.scrollTop >= maxScrollBefore - TREE_SCROLL_BOTTOM_EPS_PX;
+          if (!nearBottom && maxScrollBefore > 0) {
+            preservePin = true;
+            distFromBottom = consoleOut.scrollHeight - consoleOut.scrollTop - consoleOut.clientHeight;
+          }
+        }
         consoleOut.innerHTML = html;
-        consoleOut.scrollTop = 0;
+        syncConsoleFindAfterRender();
+        if (follow) {
+          if (preservePin) {
+            var nh = consoleOut.scrollHeight - consoleOut.clientHeight;
+            consoleOut.scrollTop = Math.max(0, nh - distFromBottom);
+          } else {
+            consoleOut.scrollTop = consoleOut.scrollHeight;
+          }
+        } else {
+          consoleOut.scrollTop = 0;
+        }
+      } else {
+        syncConsoleFindAfterRender();
       }
-      syncConsoleFindAfterRender();
     }
     function showConsolePlain(text) {
       var t = (text || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
@@ -500,7 +526,7 @@
       }
       renderLogSegments([t]);
     }
-    function showStepConsole(stepKey) {
+    function showStepConsole(stepKey, followTailIfNearBottom) {
       var head = stepHeadlineByKey[stepKey];
       var err = (stepErrorByKey[stepKey] || "").replace(/\r\n/g, "\n").replace(/^\n+/, "");
       var joined = (logByStep[stepKey] || []).join("");
@@ -512,24 +538,24 @@
         head = String(head).replace(/^\n+/, "");
       }
       if (!err.trim()) {
-        renderLogSegments([joined || head]);
+        renderLogSegments([joined || head], followTailIfNearBottom);
         return;
       }
       if (!head) {
-        renderLogSegments([joined]);
+        renderLogSegments([joined], followTailIfNearBottom);
         return;
       }
-      renderLogSegments([{ p: head, e: err }]);
+      renderLogSegments([{ p: head, e: err }], followTailIfNearBottom);
     }
     function refreshConsoleIfLiveStepAppend() {
       if (!selectedEl || !selectedEl.dataset) return;
       var ds = selectedEl.dataset;
       if (ds.logScope === "feature") {
-        renderLogSegments(logFeature);
+        renderLogSegments(logFeature, true);
       } else if (ds.logScope === "scenario" && ds.scenarioKey) {
-        renderLogSegments(logByScenario[ds.scenarioKey] || []);
+        renderLogSegments(logByScenario[ds.scenarioKey] || [], true);
       } else if (selectedEl.classList && selectedEl.classList.contains("tree-step") && ds.stepKey) {
-        showStepConsole(ds.stepKey);
+        showStepConsole(ds.stepKey, true);
       }
     }
     function bumpFeature(t) {
@@ -640,6 +666,7 @@
       line.dataset.stepBound = "1";
       line.addEventListener("click", function(ev) {
         ev.stopPropagation();
+        noteUserPinnedTreeSelection();
         setSelected(line);
         showStepConsole(stepKey);
       });
@@ -689,6 +716,7 @@
       orow.sum.dataset.logScope = "scenario";
       orow.sum.dataset.scenarioKey = sk || "";
       wireExpandableDetails(orphan, orow.sum, function() {
+        noteUserPinnedTreeSelection();
         setSelected(orow.sum);
         renderLogSegments(logByScenario[sk] || []);
       });
@@ -733,6 +761,7 @@
       scenarioStepsBodyByKey = /* @__PURE__ */ Object.create(null);
       row.sum.dataset.logScope = "feature";
       wireExpandableDetails(details, row.sum, function() {
+        noteUserPinnedTreeSelection();
         setSelected(row.sum);
         renderLogSegments(logFeature);
       });
@@ -786,6 +815,7 @@
         scenarioRunningStepCount = /* @__PURE__ */ Object.create(null);
         pendingStepRowByKey = /* @__PURE__ */ Object.create(null);
         featureRunCancelled = false;
+        liveFollowSelection = true;
         hideConsoleFind({ resetQuery: true });
         if (consoleOut) consoleOut.textContent = "";
         syncRunLayoutVisibility();
@@ -793,6 +823,7 @@
       }
       if (m.type === "feature") {
         featureRunCancelled = false;
+        liveFollowSelection = true;
         ensureFeatureBody(m.label);
         refreshFeatureIcon();
         treeRoot.scrollTop = 0;
@@ -825,7 +856,9 @@
           }
           refreshScenarioIcon(selectKey);
           refreshFeatureIcon();
-          setSelected(mergeSum);
+          if (liveFollowSelection && mergeSum) {
+            setSelected(mergeSum);
+          }
           refreshConsoleIfLiveStepAppend();
           return;
         }
@@ -852,10 +885,13 @@
         srow.sum.dataset.logScope = "scenario";
         srow.sum.dataset.scenarioKey = selectKey;
         wireExpandableDetails(sdet, srow.sum, function() {
+          noteUserPinnedTreeSelection();
           setSelected(srow.sum);
           renderLogSegments(logByScenario[selectKey] || []);
         });
-        setSelected(srow.sum);
+        if (liveFollowSelection) {
+          setSelected(srow.sum);
+        }
         refreshConsoleIfLiveStepAppend();
         return;
       }

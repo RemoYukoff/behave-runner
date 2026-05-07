@@ -42,9 +42,9 @@ function locationForBehaveStep(
 }
 
 /**
- * Stable Live panel scenario id: hierarchy node when matched, else Behave `location`
- * (outline example row), else fingerprint of the Behave `scenario` string.
- * Never rely on label-only matching for outlines — Behave substitutes placeholders.
+ * Stable Live panel scenario id: hierarchy node when matched, else fingerprint of Behave's
+ * expanded `scenario` string (optionally + line when multiple outlines share the same title).
+ * Prefer name over raw `location` so dynamic Examples don't merge unrelated outlines.
  */
 function resolveLivePanelScenarioBinding(
   featureItem: BehaveHierarchyNode,
@@ -65,16 +65,32 @@ function resolveLivePanelScenarioBinding(
   if (scenarioItem) {
     return { key: scenarioItem.id, scenarioItem };
   }
+  const sn = scenarioName?.trim();
+  if (sn) {
+    const strippedNorm = normalizeScenarioName(stripOutlineSuffix(sn));
+    const sameTitleSiblings = countScenariosWithStrippedOutlineName(
+      featureItem,
+      strippedNorm
+    );
+    if (sameTitleSiblings > 1) {
+      const locDup = parseBehaveLocation(locationStr);
+      if (
+        locDup &&
+        pathsEqualFs(locDup.filePath, fsPath, workspaceRoot)
+      ) {
+        return {
+          key: `behavelive:name:${encodeURIComponent(fsPath)}:${encodeURIComponent(sn)}:${locDup.line1Based}`
+        };
+      }
+    }
+    return {
+      key: `behavelive:name:${encodeURIComponent(fsPath)}:${encodeURIComponent(sn)}`
+    };
+  }
   const loc = parseBehaveLocation(locationStr);
   if (loc && pathsEqualFs(loc.filePath, fsPath, workspaceRoot)) {
     return {
       key: `behavelive:scen:${encodeURIComponent(fsPath)}:${loc.line1Based}`
-    };
-  }
-  const sn = scenarioName?.trim();
-  if (sn) {
-    return {
-      key: `behavelive:name:${encodeURIComponent(fsPath)}:${encodeURIComponent(sn)}`
     };
   }
   return undefined;
