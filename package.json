@@ -137,8 +137,17 @@
             "editor.semanticTokenColorCustomizations": {
                 "rules": {
                     "behaveTag:behave": "#FFA500",
-                    "behaveStepText:behave": "#FFFFFF",
                     "behavePlaceholder:behave": "#FF8DC7"
+                },
+                "[*Dark*]": {
+                    "rules": {
+                        "behaveStepText:behave": "#FFFFFF"
+                    }
+                },
+                "[*Light*]": {
+                    "rules": {
+                        "behaveStepText:behave": "#1a1a1a"
+                    }
                 }
             }
         },
