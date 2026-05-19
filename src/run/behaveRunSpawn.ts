@@ -1,6 +1,7 @@
 import * as cp from "child_process";
 import * as path from "path";
 import type { BehaveJob } from "./behaveJobTypes";
+import { getBehaveExtraArgsForResource } from "./behavePythonDebug";
 import { behavesSupportsExplicitNoCaptureStdoutFlag } from "./behaveVersion";
 
 export function liveFormatterBundlePath(extensionPath: string): string {
@@ -50,7 +51,8 @@ export function spawnBehave(
     "--no-logcapture",
     "--no-summary",
     "-f",
-    "behave_runner_live:BehaveRunnerLiveFormatter"
+    "behave_runner_live:BehaveRunnerLiveFormatter",
+    ...getBehaveExtraArgsForResource(job.fsPath)
   ];
   if (job.kind === "feature") {
     behaveArgs.push(job.fsPath);

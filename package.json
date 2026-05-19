@@ -2,7 +2,7 @@
     "name": "behave-runner",
     "displayName": "Behave Runner",
     "description": "Run Behave from CodeLens in .feature files and the Live run panel (run/debug), with Go to Definition, step autocomplete, and more.",
-    "version": "1.14.11",
+    "version": "1.14.12",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
     "repository": {
@@ -177,6 +177,14 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Only debug user code when running Behave in debug mode."
+                },
+                "behaveRunner.behave.extraArgs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Extra arguments passed to behave on every run and debug launch (e.g. \"--tags=@wip\", \"--define=env=staging\")."
                 },
                 "behaveRunner.stepDefinitions.patterns": {
                     "type": "array",

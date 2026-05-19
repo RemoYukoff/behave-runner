@@ -8,6 +8,18 @@ export function getJustMyCodeForResource(resourcePath: string): boolean {
     .get<boolean>("debug.justMyCode", true);
 }
 
+/** User-supplied behave CLI tokens from `behaveRunner.behave.extraArgs`. */
+export function getBehaveExtraArgsForResource(resourcePath: string): string[] {
+  const resourceUri = vscode.Uri.file(resourcePath);
+  const raw = vscode.workspace
+    .getConfiguration("behaveRunner", resourceUri)
+    .get<unknown>("behave.extraArgs", []);
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter((item): item is string => typeof item === "string");
+}
+
 export type PythonBehaveDebugLaunch = {
   workspaceRoot: string;
   workspaceFolder: vscode.WorkspaceFolder | undefined;
@@ -26,10 +38,11 @@ export function buildPythonBehaveDebugLaunch(
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(
     vscode.Uri.file(job.fsPath)
   );
+  const extraArgs = getBehaveExtraArgsForResource(job.fsPath);
   const debugArgs =
     job.kind === "feature"
-      ? [job.fsPath]
-      : [job.fsPath, "-n", job.scenarioName];
+      ? [...extraArgs, job.fsPath]
+      : [...extraArgs, job.fsPath, "-n", job.scenarioName];
 
   const config: vscode.DebugConfiguration = {
     type: "python",
@@ -61,9 +74,10 @@ export function buildPythonBehaveDebugLaunchFromCliArgs(args: {
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(
     vscode.Uri.file(args.filePath)
   );
+  const extraArgs = getBehaveExtraArgsForResource(args.filePath);
   const debugArgs = args.runAll
-    ? [args.filePath]
-    : [args.filePath, "-n", args.scenarioName];
+    ? [...extraArgs, args.filePath]
+    : [...extraArgs, args.filePath, "-n", args.scenarioName];
 
   const config: vscode.DebugConfiguration = {
     type: "python",
