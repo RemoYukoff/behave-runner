@@ -94,11 +94,12 @@ Feature: Go to Definition Test Cases
   Scenario: Step decorator with Given
     Given the system is ready
     And I wait for 1 seconds
-    Then the result is 0
+    Then the system is ready
 
   Scenario: Step decorator with When
-    Given the first number is 5
+    Given the first number is 0
     When I wait for 1 seconds
+    And I add 0
     Then the result is 0
 
   Scenario: Step decorator with Then
