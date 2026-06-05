@@ -4,8 +4,7 @@ import {
   countScenariosWithStrippedOutlineName,
   findBgItem,
   findScenarioItem,
-  findStepUnderParent,
-  scenarioNodeMatchesBehaveLocation
+  findStepUnderParent
 } from "./behaveLiveStreamLookup";
 import {
   normalizeScenarioName,
@@ -105,43 +104,10 @@ function resolveScenarioItem(
   workspaceRoot: string
 ): BehaveHierarchyNode | undefined {
   if (job.kind === "scenario") {
-    const target = job.scenarioItem;
-    if (!scenarioName?.trim()) {
-      return scenarioNodeMatchesBehaveLocation(
-        target,
-        locationStr,
-        fsPath,
-        workspaceRoot
-      )
-        ? target
-        : undefined;
-    }
-    const ev = scenarioName;
-    const found = findScenarioItem(
-      featureItem,
-      ev,
-      locationStr,
-      fsPath,
-      workspaceRoot
-    );
-    if (found) {
-      return found;
-    }
-    if (normalizeScenarioName(target.label) === normalizeScenarioName(ev)) {
-      return target;
-    }
-    if (scenarioNodeMatchesBehaveLocation(target, locationStr, fsPath, workspaceRoot)) {
-      return target;
-    }
-    const strippedEv = normalizeScenarioName(stripOutlineSuffix(ev));
-    const strippedJob = normalizeScenarioName(stripOutlineSuffix(target.label));
-    if (
-      strippedEv === strippedJob &&
-      countScenariosWithStrippedOutlineName(featureItem, strippedEv) === 1
-    ) {
-      return target;
-    }
-    return undefined;
+    // Single-scenario runs already fix intent via `-n` + the selected hierarchy node.
+    // Behave's expanded outline titles/locations can diverge from tree labels; binding
+    // every live event to the run target keeps scenario/step icons on one row.
+    return job.scenarioItem;
   }
   if (!scenarioName) {
     return undefined;

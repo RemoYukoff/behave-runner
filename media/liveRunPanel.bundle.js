@@ -647,6 +647,54 @@
       }
       return null;
     }
+    function applyFeatureFinishedSweep(featureStatus) {
+      var kind = finalStatusKind(featureStatus);
+      var stepKeys = Object.keys(pendingStepRowByKey);
+      var si;
+      for (si = 0; si < stepKeys.length; si++) {
+        var stk = stepKeys[si];
+        var row = pendingStepRowByKey[stk];
+        if (!row) continue;
+        var ic = row.querySelector(".tree-row-icon");
+        if (ic) {
+          if (kind === "fail") setRowIcon(ic, "fail");
+          else if (kind === "skip") setRowIcon(ic, "skip");
+          else if (kind === "pass") setRowIcon(ic, "pass");
+          else setRowIcon(ic, "none");
+        }
+        if (kind === "fail") row.classList.add("tree-step-fail");
+        var psk = findScenarioKeyForStepRow(row);
+        if (psk) {
+          bumpRunningStepCount(psk, -1);
+          if (kind === "fail") scenarioFailed[psk] = true;
+        }
+        delete pendingStepRowByKey[stk];
+      }
+      var scenKeys = Object.keys(scenarioIcons);
+      for (si = 0; si < scenKeys.length; si++) {
+        var sk2 = scenKeys[si];
+        if (scenarioDone[sk2]) continue;
+        if (scenarioFailed[sk2]) {
+          scenarioDone[sk2] = true;
+          scenarioDoneStatus[sk2] = "fail";
+        } else if (scenarioSkipped[sk2] || scenarioDoneStatus[sk2] === "skip") {
+          scenarioDone[sk2] = true;
+          scenarioDoneStatus[sk2] = "skip";
+        } else if (kind === "fail") {
+          scenarioDone[sk2] = true;
+          scenarioDoneStatus[sk2] = "fail";
+        } else if (kind === "skip") {
+          scenarioDone[sk2] = true;
+          scenarioDoneStatus[sk2] = "skip";
+        } else {
+          scenarioDone[sk2] = true;
+          scenarioDoneStatus[sk2] = kind || "pass";
+        }
+        scenarioRunningStepCount[sk2] = 0;
+        refreshScenarioIcon(sk2);
+      }
+      refreshFeatureIcon();
+    }
     function applyRunCancelledSweep() {
       var stepKeys = Object.keys(pendingStepRowByKey);
       var si;
@@ -926,7 +974,7 @@
       }
       if (m.type === "feature_finished") {
         featureFinishedKind = finalStatusKind(m.status);
-        refreshFeatureIcon();
+        applyFeatureFinishedSweep(m.status);
         return;
       }
       if (m.type === "runCancelled") {
