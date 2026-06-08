@@ -1,8 +1,9 @@
 {
     "name": "behave-runner",
     "displayName": "Behave Runner",
+    "icon": "media/icon.png",
     "description": "Run Behave from CodeLens in .feature files and the Live run panel (run/debug), with Go to Definition, step autocomplete, and more.",
-    "version": "1.14.12",
+    "version": "1.14.13",
     "author": "Remo Yukoff <remo.yukoff@gmail.com>",
     "publisher": "remoyukoff",
     "repository": {
