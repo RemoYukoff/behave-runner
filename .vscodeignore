@@ -1,9 +1,48 @@
+# Dev / repo
+.github/**
+.cursor/**
+.vscode/**
 example-project/**
+.gitignore
+tsconfig.json
+
+# TypeScript sources (compiled to out/)
+src/**
+packages/**
+
+# Workspace packages (symlinked under node_modules/@behave-runner)
+node_modules/@behave-runner/**/src/**
+node_modules/@behave-runner/**/test/**
+node_modules/@behave-runner/**/out/test/**
+node_modules/@behave-runner/**/out/**/*.d.ts
+node_modules/@behave-runner/**/tsconfig*.json
+node_modules/@behave-runner/**/README.md
+
+# Codicons copied to media/codicons at build time
+node_modules/@vscode/codicons/**
+
+# Dev dependencies in node_modules
 node_modules/@types/**
 node_modules/typescript/**
 node_modules/esbuild/**
 node_modules/@esbuild/**
 node_modules/.bin/**
+
+# Trim dependency metadata
+node_modules/**/*.d.ts
+node_modules/**/README.md
+node_modules/**/README
+node_modules/**/CHANGELOG.md
+node_modules/**/LICENSE*
+node_modules/**/License.txt
+node_modules/**/thirdpartynotices.txt
+node_modules/**/.github/**
+node_modules/**/.devcontainer/**
+node_modules/**/.husky/**
+
+# Source maps
 out/**/*.map
-src/**
-packages/**
+
+# Python bytecode
+**/__pycache__/**
+**/*.pyc
