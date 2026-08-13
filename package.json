@@ -215,7 +215,7 @@
     },
     "scripts": {
         "build:webview": "esbuild src/webview/liveRunPanelScript.ts --bundle --platform=browser --target=es2020 --outfile=media/liveRunPanel.bundle.js",
-        "compile": "npm run build:webview && tsc -p packages/behave-runner-core/tsconfig.json && tsc -p packages/behave-runner-lsp/tsconfig.json && tsc -p ./ && tsc -p src/webview/tsconfig.json",
+        "compile": "npm run build:webview && tsc -p packages/behave-runner-core/tsconfig.json && tsc -p packages/behave-runner-core/tsconfig.test.json && tsc -p packages/behave-runner-lsp/tsconfig.json && tsc -p ./ && tsc -p src/webview/tsconfig.json",
         "watch": "tsc -watch -p ./",
         "copy-codicons": "node -e \"const fs=require('fs'),p=require('path');const r=p.join('node_modules','@vscode','codicons','dist');const d=p.join('media','codicons');if(!fs.existsSync(p.join(r,'codicon.css'))){console.warn('Behave Runner: @vscode/codicons not installed; skip copy-codicons');process.exit(0);}fs.mkdirSync(d,{recursive:true});['codicon.css','codicon.ttf'].forEach(f=>fs.copyFileSync(p.join(r,f),p.join(d,f)));\"",
         "prepare": "npm run copy-codicons",

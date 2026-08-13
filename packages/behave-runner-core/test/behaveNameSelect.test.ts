@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { escapeBehaveNameSelect } from "./behaveNameSelect";
+import { escapeBehaveNameSelect } from "@behave-runner/core";
 
 function matchesBehaveNameSelect(pattern: string, scenarioName: string): boolean {
   return new RegExp(pattern).test(scenarioName);

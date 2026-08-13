@@ -16,8 +16,11 @@
     "README.md"
   ],
   "scripts": {
-    "compile": "tsc -p ./",
-    "test": "node --test out/*.test.js"
+    "compile": "tsc -p ./ && tsc -p ./tsconfig.test.json",
+    "test": "node --test out/test/*.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0"
   },
   "license": "MIT"
 }
