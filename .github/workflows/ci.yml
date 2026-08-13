@@ -32,6 +32,9 @@ jobs:
       - name: Build
         run: npm run compile
 
+      - name: Unit tests
+        run: npm run test -w @behave-runner/core
+
       - name: Check for uncommitted changes
         run: |
           if [ -n "$(git status --porcelain)" ]; then

@@ -1,3 +1,4 @@
+import { escapeBehaveNameSelect } from "@behave-runner/core";
 import * as vscode from "vscode";
 import type { BehaveJob } from "./behaveJobTypes";
 
@@ -42,7 +43,7 @@ export function buildPythonBehaveDebugLaunch(
   const debugArgs =
     job.kind === "feature"
       ? [...extraArgs, job.fsPath]
-      : [...extraArgs, job.fsPath, "-n", job.scenarioName];
+      : [...extraArgs, job.fsPath, "-n", escapeBehaveNameSelect(job.scenarioName)];
 
   const config: vscode.DebugConfiguration = {
     type: "python",
@@ -77,7 +78,7 @@ export function buildPythonBehaveDebugLaunchFromCliArgs(args: {
   const extraArgs = getBehaveExtraArgsForResource(args.filePath);
   const debugArgs = args.runAll
     ? [...extraArgs, args.filePath]
-    : [...extraArgs, args.filePath, "-n", args.scenarioName];
+    : [...extraArgs, args.filePath, "-n", escapeBehaveNameSelect(args.scenarioName)];
 
   const config: vscode.DebugConfiguration = {
     type: "python",

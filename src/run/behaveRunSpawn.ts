@@ -1,3 +1,4 @@
+import { escapeBehaveNameSelect } from "@behave-runner/core";
 import * as cp from "child_process";
 import * as path from "path";
 import type { BehaveJob } from "./behaveJobTypes";
@@ -57,7 +58,7 @@ export function spawnBehave(
   if (job.kind === "feature") {
     behaveArgs.push(job.fsPath);
   } else {
-    behaveArgs.push("-n", job.scenarioName, job.fsPath);
+    behaveArgs.push("-n", escapeBehaveNameSelect(job.scenarioName), job.fsPath);
   }
   const env = { ...(process.env as NodeJS.ProcessEnv) };
   env.PYTHONUNBUFFERED = "1";

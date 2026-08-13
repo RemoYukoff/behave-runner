@@ -65,3 +65,5 @@ export {
   type FeatureFormatOptions,
   type FeatureLineEdit,
 } from "./featureFormat";
+
+export { escapeBehaveNameSelect } from "./behaveNameSelect";

@@ -16,7 +16,8 @@
     "README.md"
   ],
   "scripts": {
-    "compile": "tsc -p ./"
+    "compile": "tsc -p ./",
+    "test": "node --test out/*.test.js"
   },
   "license": "MIT"
 }
